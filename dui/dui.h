@@ -256,8 +256,6 @@ typedef struct DUI_TEXT_RANGE
     U32 length;
 } DUI_TEXT_RANGE;
 
-int GetCurrentPublicKey(void* parent, U8* pk);
-
 // the generic control class
 class XControl
 {
@@ -673,13 +671,13 @@ private:
     U32  m_caretAnchor = 0;
     U32  m_caretPosition = 0;
     U32  m_caretPositionOffset = 0;
-    int  m_Width = 0;
-    int  m_Height = 0;
+    int  m_Height = 0;  // the total height of the text in pixel
+    int  m_Offset = 0;  // the offset of the vertical scrollbar
+    //int  m_Width = 0;
     //U16  m_Text[DUI_EDITBOX_MAX_LENGTH + 1] = { 0 };
     U32  m_TextLen = 0;
     std::wstring m_Text;
 
-    DUI_TEXT_RANGE m_SelRange;
     void* m_pTextFactory = nullptr;
     void* m_pTextFormat = nullptr;
     void* m_pTextLayout = nullptr;
@@ -701,7 +699,8 @@ public:
     int OnTimer() 
     { 
         m_caret = !m_caret;
-        return (m_property & XCONTROL_PROP_FOCUS) ? 1 : 0; // if this editbox has focus, we need to redraw the caret on timer
+        // if this editbox has focus, we need to redraw the caret on timer
+        return (m_property & XCONTROL_PROP_FOCUS) ? 1 : 0; 
     }
 
     int Draw(int dx = 0, int dy = 0);
@@ -776,6 +775,7 @@ public:
     void GetLineMetrics(OUT std::vector<DWRITE_LINE_METRICS>& lineMetrics);
     void UpdateSystemCaret(const RectF& rect);
     void UpdateCaretFormatting();
+    void CopyToClipboard();
 };
 
 

@@ -353,7 +353,7 @@ public:
 
     void UpdateControlPosition() {}
 
-    int Draw(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret)
+    int Draw(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
     {
         int r = 0;
         U32* buff = nullptr;
@@ -382,23 +382,27 @@ public:
                         static_cast<FLOAT>(m_area.bottom)
                     );
                     pD2DRenderTarget->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-                    pD2DRenderTarget->DrawBitmap(pBitmap, &rect);
+                    pD2DRenderTarget->DrawBitmap(pBitmap, &rect); // do the real draw
                     pD2DRenderTarget->PopAxisAlignedClip();
                     r = 1;
                 }
                 SafeRelease(&pBitmap);
 
-                if (DUI_PROP_HANDLETEXT & m_property)
+                if (DUI_PROP_HANDLETEXT & m_property) // if this virtual window has text to draw, we use directwrite to draw the text
                 {
-                    DrawText(surface, brushText, brushSelText, brushCaret);
+                    DrawText(surface, brushText, brushSelText, brushCaret, brushBkg0, brushBkg1);
                 }
             }
         }
         return r;
     }
 
-    int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret) { return 0; }
-    int DrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret)
+    int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1) 
+    { 
+        return 0; 
+    }
+
+    int DrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
     {
         if (nullptr != surface)
         {
@@ -410,13 +414,13 @@ public:
                 assert(nullptr != xctl);
                 assert(xctl->m_Id == i);
                 prop = xctl->getProperty();
-                if (prop & XCONTROL_PROP_HIDDEN)
+                if (prop & XCONTROL_PROP_HIDDEN) // we do not need to draw the control that is not visible
                     continue;
                 xctl->DrawText(m_area.left, m_area.top, surface, brushText, brushSelText, brushCaret);
             }
             // the derived class will draw its content
             T* pT = static_cast<T*>(this);
-            pT->DoDrawText(surface, brushText, brushSelText, brushCaret);
+            pT->DoDrawText(surface, brushText, brushSelText, brushCaret, brushBkg0, brushBkg1);
         }
         return 0;
     }
@@ -863,110 +867,6 @@ public:
         return r;
     }
 
-#if 0
-    int On_DUI_LBUTTONUP(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
-    {
-        int r = DUI_STATUS_NODRAW;
-        int xPos = GET_X_LPARAM(lParam);
-        int yPos = GET_Y_LPARAM(lParam);
-        XControl* xctl;
-
-        ClearDUIWindowDragMode();
-        m_DragMode = XDragMode::DragNone;
-        m_ptOffsetOld.x = -1, m_ptOffsetOld.y = -1;
-
-        if (XWinPointInRect(xPos, yPos, &m_area))
-        {
-            if (m_maxControl > 0)
-            {
-                int hit = -1;
-                bool inner;
-                // transfer the coordination from real window to local virutal window
-                xPos -= m_area.left;
-                yPos -= m_area.top;
-                assert(xPos >= 0);
-                assert(yPos >= 0);
-
-                for (int i = 0; i < m_maxControl; i++)
-                {
-                    xctl = m_controlArray[i];
-                    assert(nullptr != xctl);
-                    assert(xctl->m_Id == i);
-                    if (xctl->IsOverMe(xPos, yPos, &inner))  // we find the control that the mouse is hovering
-                    {
-                        hit = i;
-                        break;
-                    }
-                }
-                if (-1 != hit) // we are hitting some button
-                {
-                    assert(hit == xctl->m_Id);
-                    if (DUI_PROP_BTNACTIVE & m_property)
-                    {
-                        int oldActive = m_activeControl;
-                        m_activeControl = hit;
-                        if (oldActive >= 0)
-                        {
-                            assert(oldActive < m_maxControl);
-                            XControl* xctlOld = m_controlArray[oldActive];
-                            r += xctlOld->setStatus(XCONTROL_STATE_NORMAL, XMOUSE_LBUP);
-                        }
-                        r += xctl->setStatus(XCONTROL_STATE_ACTIVE, XMOUSE_LBUP);
-                    }
-                    else
-                    {
-                        m_activeControl = -1;
-                        r += xctl->setStatus(XCONTROL_STATE_HOVERED, XMOUSE_LBUP);
-                    }
-                    xctl->ShowCursor();
-                    if (nullptr != xctl->pfAction)
-                    {
-                        xctl->pfAction(this, m_message, 0, xctl->m_Id);
-                    }
-                }
-                else
-                {
-                    r += SetAllControlStatus(XCONTROL_STATE_NORMAL, XMOUSE_LBUP);
-                }
-            }
-            else 
-            {
-                if (DUI_PROP_HASVSCROLL & m_property)
-                {
-                    if (DUI_STATUS_VSCROLL & m_status)
-                    {
-                        r++;
-                    }
-                }
-            }
-        }
-        else // the mouse is not in our area
-        {
-            r += SetAllControlStatus(XCONTROL_STATE_NORMAL, XMOUSE_LBUP);
-            if (DUI_PROP_HASVSCROLL & m_property)
-            {
-                if (DUI_STATUS_VSCROLL & m_status)
-                {
-                    m_status &= ~DUI_STATUS_VSCROLL;
-                    r++;
-                }
-            }
-        }
-
-        {
-            T* pT = static_cast<T*>(this);
-            r += pT->Do_DUI_LBUTTONUP(uMsg, wParam, lParam, lpData);
-        }
-
-        if (r)
-        {
-            m_status |= DUI_STATUS_NEEDRAW;
-            InvalidateDUIWindow();
-        }
-
-        return r;
-    }
-#endif
     int Do_DUI_LBUTTONDBLCLK(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
     int On_DUI_LBUTTONDBLCLK(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {

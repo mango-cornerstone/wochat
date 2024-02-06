@@ -171,6 +171,8 @@ private:
 	ID2D1SolidColorBrush* m_pTextBrush0       = nullptr;
 	ID2D1SolidColorBrush* m_pTextBrush1       = nullptr;
 	ID2D1SolidColorBrush* m_pCaretBrush       = nullptr;
+	ID2D1SolidColorBrush* m_pBkgBrush0        = nullptr;
+	ID2D1SolidColorBrush* m_pBkgBrush1        = nullptr;
 
 public:
 	DECLARE_XWND_CLASS(NULL, IDR_MAINFRAME, 0)
@@ -318,7 +320,9 @@ public:
 		InterlockedIncrement(&g_Quit);
 
 		SetEvent(g_MQTTPubEvent); // tell MQTT pub thread to quit gracefully
-
+		
+		ReleaseUnknown(m_pBkgBrush0);
+		ReleaseUnknown(m_pBkgBrush1);
 		ReleaseUnknown(m_pCaretBrush);
 		ReleaseUnknown(m_pTextBrushSel);
 		ReleaseUnknown(m_pTextBrush0);
@@ -915,13 +919,15 @@ public:
 
 			if (S_OK == hr && nullptr != m_pD2DRenderTarget)
 			{
-				ReleaseUnknown(m_pixelBitmap0);
-				//ReleaseUnknown(&m_pixelBitmap1);
-				//ReleaseUnknown(&m_pixelBitmap2);
+				ReleaseUnknown(m_pBkgBrush0);
+				ReleaseUnknown(m_pBkgBrush1);
+				ReleaseUnknown(m_pCaretBrush);
+				ReleaseUnknown(m_pTextBrushSel);
 				ReleaseUnknown(m_pTextBrush0);
 				ReleaseUnknown(m_pTextBrush1);
-				ReleaseUnknown(m_pTextBrushSel);
-				ReleaseUnknown(m_pCaretBrush);
+				ReleaseUnknown(m_pixelBitmap0);
+				//ReleaseUnknown(m_pixelBitmap1);
+				//ReleaseUnknown(m_pixelBitmap2);
 
 				U32 pixel[1] = { 0xFFEEEEEE };
 				hr = m_pD2DRenderTarget->CreateBitmap(
@@ -942,7 +948,7 @@ public:
 						&m_pixelBitmap2);
 					ATLASSERT(S_OK == hr);
 #endif
-					hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x666666), &m_pTextBrush0);
+					hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pTextBrush0);
 					if (S_OK == hr && nullptr != m_pTextBrush0)
 					{
 						hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pTextBrush1);
@@ -951,14 +957,19 @@ public:
 							hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x87CEFA), &m_pTextBrushSel);
 							if (S_OK == hr && nullptr != m_pTextBrushSel)
 							{
-								hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x333333), &m_pCaretBrush);
+								hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pCaretBrush);
+								if (S_OK == hr && nullptr != m_pCaretBrush)
+								{
+									hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x95EC6A), &m_pBkgBrush0);
+									if (S_OK == hr && nullptr != m_pBkgBrush0)
+										hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF), &m_pBkgBrush1);
+								}
 							}
 						}
 					}
 				}
 			}
 		}
-
 		return hr;
 	}
 
@@ -976,7 +987,9 @@ public:
 			&& nullptr != m_pTextBrush0 
 			&& nullptr != m_pTextBrush1 
 			&& nullptr != m_pTextBrushSel
-			&& nullptr != m_pCaretBrush)
+			&& nullptr != m_pCaretBrush
+			&& nullptr != m_pBkgBrush0
+			&& nullptr != m_pBkgBrush1)
 		{
 			m_pD2DRenderTarget->BeginDraw();
 			////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -986,12 +999,12 @@ public:
 			DrawSeperatedLines(); // draw seperator lines
 
 			// draw five windows
-			m0 += m_win0.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush);
-			m1 += m_win1.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush);
-			m2 += m_win2.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush);
-			m3 += m_win3.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush);
-			m4 += m_win4.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush);
-			m5 += m_win5.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush);
+			m0 += m_win0.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+			m1 += m_win1.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+			m2 += m_win2.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+			m3 += m_win3.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+			m4 += m_win4.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+			m5 += m_win5.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
 
 			hr = m_pD2DRenderTarget->EndDraw();
 			////////////////////////////////////////////////////////////////////////////////////////////////////

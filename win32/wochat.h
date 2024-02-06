@@ -97,6 +97,7 @@ typedef struct XChatMessage
 	U8   h;        // the height in pixel of this icon
 	int  height;   // in pixel
 	int  width;    // in pixel
+	DWRITE_TEXT_METRICS tm;
 	U16  state;
 	U64  ts;		// the time stamp. 
 	wchar_t* name;      // The name of this people      
@@ -134,5 +135,7 @@ int Raw2HexString(U8* input, U8 len, U8* output, U8* outlen);
 int HexString2Raw(U8* input, U8 len, U8* output, U8* outlen);
 int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);
 int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen);
+
+int GetCurrentPublicKey(void* parent, U8* pk);
 
 #endif // __WT_WOCHAT_H__

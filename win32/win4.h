@@ -17,7 +17,7 @@ class XWindow4 : public XWindowT <XWindow4>
 		WIN4_GAP_BOTTOM4 = 10,
 		WIN4_GAP_LEFT4   = 10,
 		WIN4_GAP_RIGHT4  = 10,
-		WIN4_GAP_MESSAGE = 20
+		WIN4_GAP_MESSAGE = 34
 	};
 
 	XChatGroup* m_chatGroup = nullptr;
@@ -70,13 +70,12 @@ public:
 		if (nullptr == m_chatGroup)
 			return 1;
 
-		for (i = 0; i < 33; i++)
+		for (i = 0; i < 33; i++) // check the public key is the same or not
 		{
 			if (m_chatGroup->pubkey[i] != mt->pubkey[i])
 				break;
 		}
-
-		if (i != 33)
+		if (i != 33) // if the public key is not the same, something is wrong
 			return 1;
 
 		p = (XChatMessage*)palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
@@ -86,34 +85,18 @@ public:
 		p->message = (wchar_t*)palloc(m_chatGroup->mempool, sizeof(wchar_t)*(mt->msgLen));
 		if (nullptr == p->message)
 		{
-			free(p);
+			pfree(p);
 			return 1;
 		}
+
 		p->msgLen = mt->msgLen;
 		for (U16 i = 0; i < mt->msgLen; i++) // copy the text message
 			p->message[i] = mt->message[i];
 		
-		p->state = XMESSAGE_FROM_ME;
-		p->icon = (U32*)xbmpHeadMe;
-		p->w = p->h = 34;
-
-		p->next = p->prev = nullptr;
-
-		if (nullptr == m_chatGroup->headMessage)
-			m_chatGroup->headMessage = p;
-		if (nullptr == m_chatGroup->tailMessage)
-			m_chatGroup->tailMessage = p;
-		else
-		{
-			m_chatGroup->tailMessage->next = p;
-			p->prev = m_chatGroup->tailMessage;
-			m_chatGroup->tailMessage = p;
-		}
-
-		{  // determine the height
+		{  // determine the height of the text layout
 			IDWriteTextLayout* pTextLayout = nullptr;
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
-			FLOAT Wf = static_cast<FLOAT>((w << 1) / 3);
+			FLOAT Wf = static_cast<FLOAT>(((w+1) >> 1)); // the text width is half of the window
 			g_pDWriteFactory->CreateTextLayout(
 				p->message,
 				p->msgLen,
@@ -124,13 +107,44 @@ public:
 
 			if (pTextLayout)
 			{
-				DWRITE_TEXT_METRICS tm;
-				pTextLayout->GetMetrics(&tm);
-				p->height = static_cast<int>(tm.height) + WIN4_GAP_MESSAGE;
-				m_sizeAll.cy += p->height;
+				pTextLayout->GetMetrics(&(p->tm));
+				p->height = static_cast<int>(p->tm.height) + 1 + WIN4_GAP_MESSAGE;
+				if (p->tm.lineCount > 1) // more than 1 line
+					p->width = ((w + 1) >> 1);
+				else
+					p->width = static_cast<int>(p->tm.width);
+			}
+			else
+			{
+				pfree(p->message);
+				pfree(p);
+				return 1;
 			}
 			SafeRelease(&pTextLayout);
 		}
+
+		p->state = XMESSAGE_FROM_ME;
+		p->icon = (U32*)xbmpHeadMe;
+		p->w = p->h = 34;
+		p->next = p->prev = nullptr;
+
+		if (nullptr == m_chatGroup->headMessage)
+			m_chatGroup->headMessage = p;
+		if (nullptr == m_chatGroup->tailMessage)
+			m_chatGroup->tailMessage = p;
+		else  // put this message on the tail of this double link
+		{
+			m_chatGroup->tailMessage->next = p;
+			p->prev = m_chatGroup->tailMessage;
+			m_chatGroup->tailMessage = p;
+		}
+
+		if (p->height > 0)
+		{
+			m_sizeAll.cy += p->height;
+			m_ptOffset.y = (m_sizeAll.cy > h) ? (m_sizeAll.cy - h) : 0; // show the last message on the bottom
+		}
+
 		InterlockedIncrement(&(mt->state)); // ok, we have successfully processed this message task
 
 		InvalidateScreen();
@@ -139,128 +153,35 @@ public:
 
 	int Do_DUI_PAINT(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
 	{
-		U32 color;
-		int x, y, dx, dy, W, H, pos;
-		XChatMessage* p;
-
+		// U32 color = 0xFF6AEA9E;
+		int x, y, dx, dy, W, H;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		int margin = (DUI_STATUS_VSCROLL & m_status) ? m_scrollWidth : 0;
 
-		if (nullptr == m_chatGroup)
-			return 0;
-
-		pos = WIN4_GAP_MESSAGE;
-		p = m_chatGroup->headMessage;
-		while (nullptr != p)
+		if (m_chatGroup)
 		{
-			H = p->height;
-			if (pos + H > m_ptOffset.y && pos < m_ptOffset.y + h)
+			int pos = XWIN4_OFFSET;
+			XChatMessage* p = m_chatGroup->headMessage;
+			while (nullptr != p)
 			{
-				dy = pos - m_ptOffset.y;
-				x = w - m_scrollWidth - p->w - XWIN4_OFFSET;
-				if (XMESSAGE_FROM_ME & p->state) // me
+				H = p->height;
+				if (pos + H > m_ptOffset.y && pos < m_ptOffset.y + h) // this node is in the visible area, we need to draw it
 				{
-					color = 0xFF6AEA9E;
+					dy = pos - m_ptOffset.y;
+					x = (XMESSAGE_FROM_ME & p->state)? (w - m_scrollWidth - p->w - XWIN4_OFFSET) : XWIN4_OFFSET;
+					DUI_ScreenDrawRectRound(m_screen, w, h, (U32*)p->icon, p->w, p->h, x, dy, m_backgroundColor, m_backgroundColor);
 				}
-				else
-				{
-					color = 0xFFFFFFFF;
-					x = XWIN4_OFFSET;
-				}
-				DUI_ScreenDrawRectRound(m_screen, w, h, (U32*)p->icon, p->w, p->h, x, dy, m_backgroundColor, m_backgroundColor);
-#if 0
-				if (p->state % 2)
-					ScreenDrawRect(m_screen, w, h, (U32*)littleArrowMe, 4, 8, x + p->w + 4, dy + 13);
-#endif
-				//ScreenFillRectRound(m_screen, w, h, color, tdi->right - tdi->left + 4, p->height - GAP_MESSAGE, tdi->left, dy, m_backgroundColor, m_backgroundColor);
+				pos += H;
+				if (pos >= m_ptOffset.y + h) // out of the scope of the drawing area
+					break;
+				p = p->next;
 			}
-			pos += H;
-			if (pos >= m_ptOffset.y + h) // out of the scope of the drawing area
-				break;
-			p = p->next;
 		}
-
 		return 0;
 	}
 
-#if 0
-	int UpdateChatHistory(wchar_t* msgText, U16 len, U8 msgtype = 0)
-	{
-		int W, H, r;
-		int w = m_area.right - m_area.left;
-		int h = m_area.bottom - m_area.top;
-		XChatMessage* p = nullptr;
-		XChatMessage* q = nullptr;
-
-		if (nullptr == m_chatGroup)
-			return 1;
-
-		p = (XChatMessage*)palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
-		if (nullptr == p)
-			return 1;
-
-		p->message = (wchar_t*)palloc(m_chatGroup->mempool, sizeof(wchar_t) * len);
-		if (nullptr == p->message)
-		{
-			free(p);
-			return 1;
-		}
-
-		p->msgLen = len;
-		for (U16 i = 0; i < len; i++) // copy the text message
-			p->message[i] = msgText[i];
-
-		p->state = msgtype ? XMESSAGE_FROM_ME : XMESSAGE_FROM_SHE;
-		if (XMESSAGE_FROM_ME & p->state)
-			p->icon = (U32*)xbmpHeadMe;
-		else
-			p->icon = (U32*)xbmpHeadGirl;
-
-		p->w = p->h = 34;
-		p->id = msgtype;
-
-		p->next = p->prev = nullptr;
-
-		if (nullptr == m_chatGroup->headMessage)
-			m_chatGroup->headMessage = p;
-		if (nullptr == m_chatGroup->tailMessage)
-			m_chatGroup->tailMessage = p;
-		else
-		{
-			m_chatGroup->tailMessage->next = p;
-			p->prev = m_chatGroup->tailMessage;
-			m_chatGroup->tailMessage = p;
-		}
-
-		{  // determine the height
-			IDWriteTextLayout* pTextLayout = nullptr;
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
-			FLOAT Wf = static_cast<FLOAT>((w << 1) / 3);
-			g_pDWriteFactory->CreateTextLayout(
-				p->message,
-				p->msgLen,
-				pTextFormat,
-				Wf,
-				static_cast<FLOAT>(1),
-				(IDWriteTextLayout**)(&pTextLayout));
-
-			if (pTextLayout)
-			{
-				DWRITE_TEXT_METRICS tm;
-				pTextLayout->GetMetrics(&tm);
-				p->height = static_cast<int>(tm.height) + WIN4_GAP_MESSAGE;
-				m_sizeAll.cy += p->height;
-			}
-			SafeRelease(&pTextLayout);
-		}
-
-		InvalidateScreen();
-
-		return 0;
-	}
-#endif
-	int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret) 
+	int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{ 
 		U32 color;
 		int x, y, dx, dy, W, H, pos;
@@ -269,52 +190,60 @@ public:
 		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
 		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
 		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
+		ID2D1SolidColorBrush* pBkgBrush0 = static_cast<ID2D1SolidColorBrush*>(brushBkg0);
+		ID2D1SolidColorBrush* pBkgBrush1 = static_cast<ID2D1SolidColorBrush*>(brushBkg1);
 
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
-		FLOAT Wf = static_cast<FLOAT>((w << 1) / 3);
+		FLOAT Wf = static_cast<FLOAT>((w+1) >> 1);
 
-		if (nullptr == m_chatGroup)
-			return 0;
-
-		pos = WIN4_GAP_MESSAGE;
-		p = m_chatGroup->headMessage;
-		while (nullptr != p)
+		if (m_chatGroup)
 		{
-			H = p->height;
-			if (pos + H > m_ptOffset.y && pos < m_ptOffset.y + h) // we are in the visible area
+			D2D1_POINT_2F orgin;
+			D2D1_RECT_F bkgarea;
+			int pos = XWIN4_OFFSET;
+			p = m_chatGroup->headMessage;
+			while (nullptr != p)
 			{
-				dy = pos - m_ptOffset.y;
-				x = m_area.left + 100;
-				if (XMESSAGE_FROM_SHE & p->state) // me
+				H = p->height;
+				if (pos + H > m_ptOffset.y && pos < m_ptOffset.y + h) // we are in the visible area
 				{
-					x = XWIN4_OFFSET;
-				}
-				g_pDWriteFactory->CreateTextLayout(
-					p->message,
-					p->msgLen,
-					pTextFormat,
-					Wf,
-					static_cast<FLOAT>(1),
-					(IDWriteTextLayout**)(&pTextLayout));
+					dy = pos - m_ptOffset.y;
+					dx = XWIN4_OFFSET + XWIN4_OFFSET + 34;
 
-				if (pTextLayout)
-				{
-					DWRITE_TEXT_METRICS tm;
-					pTextLayout->GetMetrics(&tm);
-					D2D1_POINT_2F orgin;
-					orgin.x = static_cast<FLOAT>(x);
-					orgin.y = static_cast<FLOAT>(dy + m_area.top);
-					pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout, pTextBrush);
+					if (XMESSAGE_FROM_ME & p->state) // me
+					{
+						dx = ((w+1)>>1) - 34 - m_scrollWidth - XWIN4_OFFSET - XWIN4_OFFSET;
+					}
+
+					bkgarea.left = static_cast<FLOAT>(m_area.left + dx) - XWIN4_OFFSET - XWIN4_OFFSET;
+					bkgarea.top = static_cast<FLOAT>(m_area.top + dy);
+					bkgarea.right = bkgarea.left + static_cast<FLOAT>(p->width) + XWIN4_OFFSET + XWIN4_OFFSET;
+					bkgarea.bottom = bkgarea.top + static_cast<FLOAT>(p->height - WIN4_GAP_MESSAGE) + XWIN4_OFFSET + XWIN4_OFFSET;
+					pD2DRenderTarget->FillRectangle(bkgarea, pBkgBrush0);
+
+					g_pDWriteFactory->CreateTextLayout(
+						p->message,
+						p->msgLen,
+						pTextFormat,
+						Wf,
+						static_cast<FLOAT>(1),
+						(IDWriteTextLayout**)(&pTextLayout));
+
+					if (pTextLayout)
+					{
+						orgin.x = static_cast<FLOAT>(dx + m_area.left - XWIN4_OFFSET);
+						orgin.y = static_cast<FLOAT>(dy + m_area.top + XWIN4_OFFSET);
+						pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout, pTextBrush);
+					}
+					SafeRelease(&pTextLayout);
 				}
-				SafeRelease(&pTextLayout);
+				pos += H;
+				if (pos >= m_ptOffset.y + h) // out of the scope of the drawing area
+					break;
+				p = p->next;
 			}
-			pos += H;
-			if (pos >= m_ptOffset.y + h) // out of the scope of the drawing area
-				break;
-			p = p->next;
 		}
-
 		return 0; 
 	}
 };

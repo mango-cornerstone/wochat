@@ -6,27 +6,28 @@ int XControl::ShowCursor(bool inner)
 {
     int ret = 0;
 
-    if (XCONTROL_PROP_STATIC & m_property)
-        return 0;
+    if (!(XCONTROL_PROP_STATIC & m_property))
+    {
+        if (inner)
+        {
+            if (nullptr != m_Cursor1)
+            {
+                ::SetCursor((HCURSOR)m_Cursor1);
+                SetDUIWindowCursor();
+                ret = 1;
+            }
+        }
+        else
+        {
+            if (nullptr != m_Cursor2)
+            {
+                ::SetCursor((HCURSOR)m_Cursor2);
+                SetDUIWindowCursor();
+                ret = 1;
+            }
+        }
+    }
 
-    if (inner)
-    {
-        if (nullptr != m_Cursor1)
-        {
-            ::SetCursor((HCURSOR)m_Cursor1);
-            SetDUIWindowCursor();
-            ret = 1;
-        }
-    }
-    else
-    {
-        if (nullptr != m_Cursor2)
-        {
-            ::SetCursor((HCURSOR)m_Cursor2);
-            SetDUIWindowCursor();
-            ret = 1;
-        }
-    }
     return ret;
 }
 
@@ -124,12 +125,16 @@ U16 XEditBox::ExtractText(wchar_t* buffer, U16 maxlen)
     return len;
 }
 
+// when the position is changed, the width may change, so we need to re-create the textlayout
 int XEditBox::AfterPositionIsChanged(bool inner)
 {
     IDWriteFactory* pTextFactory = static_cast<IDWriteFactory*>(m_pTextFactory);
     IDWriteTextFormat* pTextFormat = static_cast<IDWriteTextFormat*>(m_pTextFormat);
 
-    if (m_pTextFactory && pTextFormat && inner)
+    assert(right1 >= left1);
+    assert(bottom1 >= top1);
+
+    if (pTextFactory && pTextFormat && inner)
     {
         SafeRelease((IDWriteTextLayout**)(&m_pTextLayout));
 
@@ -151,7 +156,13 @@ int XEditBox::AfterPositionIsChanged(bool inner)
 int XEditBox::Draw(int dx, int dy)
 {
     int ret = 0;
-    IDWriteTextLayout* pTextLayout = (IDWriteTextLayout*)m_pTextLayout;
+
+    IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
+
+    assert(m_parentBuf);
+    assert(bottom1 > top1);
+    assert(bottom2 > top2);
+
     if (pTextLayout)
     {
         DWRITE_TEXT_METRICS textMetrics;
@@ -160,7 +171,7 @@ int XEditBox::Draw(int dx, int dy)
         m_Height = static_cast<int>(textMetrics.height) + 1;
 
         int H = bottom2 - top2;
-        if (m_Height > (bottom1 - top1) && m_parentBuf) // we need to draw the vertical bar
+        if (m_Height > (bottom1 - top1)) // we need to draw the vertical bar
         {
             // Draw the vertical scroll bar
             DUI_ScreenFillRect(m_parentBuf, m_parentW, m_parentH, 0xFF333333, 8, H, right2 - 8, top2);
@@ -181,7 +192,8 @@ void XEditBox::GetLineMetrics(OUT std::vector<DWRITE_LINE_METRICS>& lineMetrics)
     pTextLayout->GetLineMetrics(&lineMetrics.front(), textMetrics.lineCount, &textMetrics.lineCount);
 }
 
-void XEditBox::GetCaretRect(RectF& rect)
+// get the rect area of caret
+void XEditBox::GetCaretRect(RectF& rect) 
 {
     RectF zeroRect = {};
     rect = zeroRect;
@@ -191,17 +203,15 @@ void XEditBox::GetCaretRect(RectF& rect)
         // Translate text character offset to point x,y.
         DWRITE_HIT_TEST_METRICS caretMetrics;
         float caretX, caretY;
-        pTextLayout->HitTestTextPosition(
-            m_caretPosition,
-            m_caretPositionOffset > 0,
-            &caretX,
-            &caretY,
-            &caretMetrics
-        );
+        pTextLayout->HitTestTextPosition(m_caretPosition, m_caretPositionOffset > 0, &caretX, &caretY, &caretMetrics);
 
         // The default thickness of 1 pixel is almost _too_ thin on modern large monitors,
         DWORD caretIntThickness = 2;
-        SystemParametersInfo(SPI_GETCARETWIDTH, 0, &caretIntThickness, FALSE);
+        SystemParametersInfo(SPI_GETCARETWIDTH, 0, &caretIntThickness, FALSE); // get the width of the caret
+#if 0
+        if (caretIntThickness < 2)
+            caretIntThickness = 2;
+#endif
         const float caretThickness = float(caretIntThickness);
 
         // Return the caret rect, untransformed.
@@ -212,23 +222,24 @@ void XEditBox::GetCaretRect(RectF& rect)
     }
 }
 
-// Returns a valid range of the current selection,
-// regardless of whether the caret or anchor is first.
+// Returns a valid range of the current selection, regardless of whether the caret or anchor is first.
 DWRITE_TEXT_RANGE XEditBox::GetSelectionRange()
 {
-    U32 caretBegin = m_caretAnchor;
-    U32 caretEnd = m_caretPosition + m_caretPositionOffset;
+    UINT32 caretBegin = m_caretAnchor;
+    UINT32 caretEnd = m_caretPosition + m_caretPositionOffset;
 
     if (caretBegin > caretEnd)
         std::swap(caretBegin, caretEnd);
 
-    caretBegin = std::min(caretBegin, static_cast<U32>(m_TextLen));
-    caretEnd = std::min(caretEnd, static_cast<U32>(m_TextLen));
+    // Limit to actual text length.
+    UINT32 textLength = static_cast<UINT32>(m_Text.size());
+    caretBegin = std::min(caretBegin, textLength);
+    caretEnd = std::min(caretEnd, textLength);
 
     DWRITE_TEXT_RANGE textRange = { caretBegin, caretEnd - caretBegin };
     return textRange;
-
 }
+
 // Deletes selection.
 int XEditBox::DeleteSelection()
 {
@@ -236,7 +247,7 @@ int XEditBox::DeleteSelection()
 
     DWRITE_TEXT_RANGE selectionRange = GetSelectionRange();
 
-    if (selectionRange.length > 0)
+    if (selectionRange.length > 0) // there is some selected text
     {
         m_layoutEditor.RemoveTextAt((IDWriteTextLayout**)(&m_pTextLayout), m_Text, selectionRange.startPosition, selectionRange.length);
 
@@ -252,11 +263,11 @@ int XEditBox::DeleteSelection()
 // position of that line by summing up the lengths. When the starting
 // line position is beyond the given text position, we have our line.
 void XEditBox::GetLineFromPosition(const DWRITE_LINE_METRICS* lineMetrics, // [lineCount]
-    U32 lineCount, U32 textPosition, OUT U32* lineOut, OUT U32* linePositionOut)
+    UINT32 lineCount, UINT32 textPosition, OUT UINT32* lineOut, OUT UINT32* linePositionOut)
 {
-    U32 line = 0;
-    U32 linePosition = 0;
-    U32 nextLinePosition = 0;
+    UINT32 line = 0;
+    UINT32 linePosition = 0;
+    UINT32 nextLinePosition = 0;
     for (; line < lineCount; ++line)
     {
         linePosition = nextLinePosition;
@@ -315,7 +326,7 @@ void XEditBox::UpdateSystemCaret(const RectF& rect)
 
 void XEditBox::UpdateCaretFormatting()
 {
-    U32 currentPos = m_caretPosition + m_caretPositionOffset;
+    UINT32 currentPos = m_caretPosition + m_caretPositionOffset;
 
     if (currentPos > 0)
     {
@@ -390,12 +401,12 @@ void XEditBox::AlignCaretToNearestCluster(bool isTrailingHit, bool skipZeroWidth
 
 // Moves the caret relatively or absolutely, optionally extending the
 // selection range (for example, when shift is held).
-bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendSelection, bool updateCaretFormat)
+bool XEditBox::SetSelection(SetSelectionMode moveMode, UINT32 advance, bool extendSelection, bool updateCaretFormat)
 {
-    U32 line = UINT32_MAX; // current line number, needed by a few modes
-    U32 absolutePosition = m_caretPosition + m_caretPositionOffset;
-    U32 oldAbsolutePosition = absolutePosition;
-    U32 oldCaretAnchor = m_caretAnchor;
+    UINT32 line = UINT32_MAX; // current line number, needed by a few modes
+    UINT32 absolutePosition = m_caretPosition + m_caretPositionOffset;
+    UINT32 oldAbsolutePosition = absolutePosition;
+    UINT32 oldCaretAnchor = m_caretAnchor;
     IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
     switch (moveMode)
     {
@@ -466,10 +477,10 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
         std::vector<DWRITE_LINE_METRICS> lineMetrics;
         GetLineMetrics(lineMetrics);
 
-        U32 linePosition;
+        UINT32 linePosition;
         GetLineFromPosition(
             &lineMetrics.front(),
-            static_cast<U32>(lineMetrics.size()),
+            static_cast<UINT32>(lineMetrics.size()),
             m_caretPosition,
             &line,
             &linePosition
@@ -541,7 +552,7 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
 
         // First need to know how many clusters there are.
         std::vector<DWRITE_CLUSTER_METRICS> clusterMetrics;
-        U32 clusterCount;
+        UINT32 clusterCount;
         pTextLayout->GetClusterMetrics(NULL, 0, &clusterCount);
 
         if (clusterCount == 0)
@@ -553,8 +564,8 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
 
         m_caretPosition = absolutePosition;
 
-        U32 clusterPosition = 0;
-        U32 oldCaretPosition = m_caretPosition;
+        UINT32 clusterPosition = 0;
+        UINT32 oldCaretPosition = m_caretPosition;
 
         if (moveMode == SetSelectionModeLeftWord)
         {
@@ -562,7 +573,7 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
             // stopping point just before the old position.
             m_caretPosition = 0;
             m_caretPositionOffset = 0; // leading edge
-            for (U32 cluster = 0; cluster < clusterCount; ++cluster)
+            for (UINT32 cluster = 0; cluster < clusterCount; ++cluster)
             {
                 clusterPosition += clusterMetrics[cluster].length;
                 if (clusterMetrics[cluster].canWrapLineAfter)
@@ -579,9 +590,9 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
         {
             // Read through the clusters, looking for the first stopping point
             // after the old position.
-            for (U32 cluster = 0; cluster < clusterCount; ++cluster)
+            for (UINT32 cluster = 0; cluster < clusterCount; ++cluster)
             {
-                U32 clusterLength = clusterMetrics[cluster].length;
+                UINT32 clusterLength = clusterMetrics[cluster].length;
                 m_caretPosition = clusterPosition;
                 m_caretPositionOffset = clusterLength; // trailing edge
                 if (clusterPosition >= oldCaretPosition && clusterMetrics[cluster].canWrapLineAfter)
@@ -603,7 +614,7 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
 
         GetLineFromPosition(
             &lineMetrics.front(),
-            static_cast<U32>(lineMetrics.size()),
+            static_cast<UINT32>(lineMetrics.size()),
             m_caretPosition,
             &line,
             &m_caretPosition
@@ -615,7 +626,7 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
             // Place the caret at the last character on the line,
             // excluding line breaks. In the case of wrapped lines,
             // newlineLength will be 0.
-            U32 lineLength = lineMetrics[line].length - lineMetrics[line].newlineLength;
+            UINT32 lineLength = lineMetrics[line].length - lineMetrics[line].newlineLength;
             m_caretPositionOffset = std::min(lineLength, 1u);
             m_caretPosition += lineLength - m_caretPositionOffset;
             AlignCaretToNearestCluster(true);
@@ -674,24 +685,23 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, U32 advance, bool extendS
 
 }
 
+// Pastes text from clipboard at current caret position.
 void XEditBox::PasteFromClipboard()
 {
-    // Pastes text from clipboard at current caret position.
-    U32 characterCount = 0;
+    UINT32 characterCount = 0;
 
     DeleteSelection();
 
     if (OpenClipboard(NULL))
     {
         HGLOBAL hClipboardData = GetClipboardData(CF_UNICODETEXT);
-
         if (hClipboardData != NULL)
         {
             // Get text and size of text.
             size_t byteSize = GlobalSize(hClipboardData);
             void* memory = GlobalLock(hClipboardData); // [byteSize] in bytes
             const wchar_t* text = reinterpret_cast<const wchar_t*>(memory);
-            characterCount = static_cast<U32>(wcsnlen(text, byteSize / sizeof(wchar_t)));
+            characterCount = static_cast<UINT32>(wcsnlen(text, byteSize / sizeof(wchar_t)));
 
             if (memory != NULL)
             {
@@ -707,23 +717,60 @@ void XEditBox::PasteFromClipboard()
         }
         CloseClipboard();
     }
-
-    SetSelection(SetSelectionModeRightChar, characterCount, true);
-
+    
+    SetSelection(SetSelectionModeRightChar, characterCount, false);
+    //SetSelection(SetSelectionModeRightChar, characterCount, true);
 }
 
-int XEditBox::OnKeyBoard(U32 msg, U64 wparam, U64 lparam)
+// Copies selected text to clipboard.
+void XEditBox::CopyToClipboard()
+{
+    DWRITE_TEXT_RANGE selectionRange = GetSelectionRange();
+    if (selectionRange.length > 0)
+    {
+        // Open and empty existing contents.
+        if (OpenClipboard(nullptr))
+        {
+            if (EmptyClipboard())
+            {
+                // Allocate room for the text
+                size_t byteSize = sizeof(wchar_t) * (selectionRange.length + 1);
+                HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE | GMEM_ZEROINIT, byteSize);
+                if (hClipboardData != NULL)
+                {
+                    void* memory = GlobalLock(hClipboardData);  // [byteSize] in bytes
+                    if (memory != NULL)
+                    {
+                        // Copy text to memory block.
+                        const wchar_t* text = m_Text.c_str();
+                        memcpy(memory, &text[selectionRange.startPosition], byteSize);
+                        GlobalUnlock(hClipboardData);
+
+                        if (SetClipboardData(CF_UNICODETEXT, hClipboardData) != NULL)
+                        {
+                            hClipboardData = NULL; // system now owns the clipboard, so don't touch it.
+                        }
+                    }
+                    GlobalFree(hClipboardData); // free if failed
+                }
+            }
+            CloseClipboard();
+        }
+    }
+}
+
+int XEditBox::OnKeyBoard(UINT32 msg, U64 wparam, U64 lparam)
 {
     int ret = 0;
 
     if (m_property & XCONTROL_PROP_FOCUS) // if this control does not have focus, we do nothing
     {
-        U32 keyCode = static_cast<U32>(wparam);
+        UINT32 keyCode = static_cast<UINT32>(wparam);
 
         bool heldShift = (GetKeyState(VK_SHIFT) & 0x80) != 0;
         bool heldControl = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 
-        U32 absolutePosition = m_caretPosition + m_caretPositionOffset;
+        UINT32 absolutePosition = m_caretPosition + m_caretPositionOffset;
 
         if (DUI_CHAR == msg)
         {
@@ -734,7 +781,7 @@ int XEditBox::OnKeyBoard(U32 msg, U64 wparam, U64 lparam)
                 // Convert the UTF32 character code from the Window message to UTF16,
                 // yielding 1-2 code-units. Then advance the caret position by how
                 // many code-units were inserted.
-                U32 charsLength = 1;
+                UINT32 charsLength = 1;
                 wchar_t chars[2] = { static_cast<wchar_t>(keyCode), 0 };
 
                 // If above the basic multi-lingual plane, split into
@@ -746,7 +793,9 @@ int XEditBox::OnKeyBoard(U32 msg, U64 wparam, U64 lparam)
                     chars[1] = wchar_t(0xDC00 + (keyCode & 0x3FF));
                     charsLength++;
                 }
-                m_layoutEditor.InsertTextAt((IDWriteTextLayout**)&m_pTextLayout, m_Text, m_caretPosition + m_caretPositionOffset, chars, charsLength, &m_caretFormat);
+                m_layoutEditor.InsertTextAt((IDWriteTextLayout**)&m_pTextLayout, 
+                    m_Text, m_caretPosition + m_caretPositionOffset, chars, charsLength, &m_caretFormat);
+                
                 SetSelection(SetSelectionModeRight, charsLength, false, false);
 
                 ret = 1;
@@ -848,7 +897,7 @@ int XEditBox::OnKeyBoard(U32 msg, U64 wparam, U64 lparam)
             case 'C':
                 if (heldControl)
                 {
-                    int i = 1;
+                    CopyToClipboard();
                 }
                 break;
             case VK_INSERT:
@@ -860,6 +909,11 @@ int XEditBox::OnKeyBoard(U32 msg, U64 wparam, U64 lparam)
                 }
                 break;
             case 'X':
+                if (heldControl)
+                {
+                    CopyToClipboard();
+                    DeleteSelection();
+                }
                 break;
             case 'A':
                 if (heldControl)
@@ -876,32 +930,38 @@ int XEditBox::OnKeyBoard(U32 msg, U64 wparam, U64 lparam)
     return ret;
 }
 
+// do the real draw on the screen
 int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_Brush brushSel, DUI_Brush brushCaret, U64 flag)
 {
-
-    ID2D1HwndRenderTarget* pD2DRenderTarget = (ID2D1HwndRenderTarget*)surface;
-    ID2D1SolidColorBrush* pTextBrush = (ID2D1SolidColorBrush*)brush;
-    ID2D1SolidColorBrush* pTextBrushSel = (ID2D1SolidColorBrush*)brushSel;
-    ID2D1SolidColorBrush* pTextBrushCaret = (ID2D1SolidColorBrush*)brushCaret;
-    IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
-
     float W, H;
     float X = static_cast<FLOAT>(dx + left1);
     float Y = static_cast<FLOAT>(dy + top1);
+
+    ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
+    ID2D1SolidColorBrush* pTextBrush        = static_cast<ID2D1SolidColorBrush*>(brush);
+    ID2D1SolidColorBrush* pTextBrushSel     = static_cast<ID2D1SolidColorBrush*>(brushSel);
+    ID2D1SolidColorBrush* pTextBrushCaret   = static_cast<ID2D1SolidColorBrush*>(brushCaret);
+    IDWriteTextLayout* pTextLayout          = static_cast<IDWriteTextLayout*>(m_pTextLayout);
 
     if (pTextLayout && pD2DRenderTarget && pTextBrush && pTextBrushSel && brushCaret)
     {
         D2D1_POINT_2F orgin;
         D2D1_RECT_F clipRect;
+        DWRITE_TEXT_RANGE caretRange;
 
         clipRect.left = static_cast<FLOAT>(dx + left2);
         clipRect.right = clipRect.left + static_cast<FLOAT>(right2 - left2);
-        clipRect.top = static_cast<FLOAT>(dy + top2);;
+        clipRect.top = static_cast<FLOAT>(dy + top1);;
         clipRect.bottom = clipRect.top + static_cast<FLOAT>(bottom2 - top2);
 
-        pD2DRenderTarget->PushAxisAlignedClip(clipRect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        DWRITE_TEXT_METRICS tm;
+        pTextLayout->GetMetrics(&tm);
+        m_Height = static_cast<int>(tm.height) + 1;
 
-        if (m_caret && (m_property & XCONTROL_PROP_FOCUS))
+        pD2DRenderTarget->PushAxisAlignedClip(clipRect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        //pD2DRenderTarget->PushAxisAlignedClip(clipRect, D2D1_ANTIALIAS_MODE_ALIASED);
+
+        if (m_caret && (m_property & XCONTROL_PROP_FOCUS)) // if the caret is visible and this editbox has the focus, we draw the caret
         {
             RectF caretRect;
             GetCaretRect(caretRect);
@@ -912,27 +972,27 @@ int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_
             caretRect.top = Y + caretRect.top;
             caretRect.right = caretRect.left + W;
             caretRect.bottom = caretRect.top + H;
+            if (caretRect.top < static_cast<FLOAT>(dy + top1))
+            {
+                m_Offset = static_cast<int>(caretRect.top) - (dy + top1) - 1;
+            }
+
+            if (caretRect.bottom > static_cast<FLOAT>(dy + bottom1))
+            {
+                m_Offset = static_cast<int>(caretRect.bottom) + 1 - (dy + bottom1);
+            }
+
             pD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
             pD2DRenderTarget->FillRectangle(caretRect, pTextBrushCaret);
             pD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         }
 
+        caretRange = GetSelectionRange();
+        if (caretRange.length > 0)
         {
             // Determine actual number of hit-test ranges
-            DWRITE_TEXT_RANGE caretRange = GetSelectionRange();
             UINT32 actualHitTestCount = 0;
-            if (caretRange.length > 0)
-            {
-                pTextLayout->HitTestTextRange(
-                    caretRange.startPosition,
-                    caretRange.length,
-                    0, // x
-                    0, // y
-                    NULL,
-                    0, // metrics count
-                    &actualHitTestCount
-                );
-            }
+            pTextLayout->HitTestTextRange(caretRange.startPosition, caretRange.length, 0, 0, NULL, 0, &actualHitTestCount);
 
             std::vector<DWRITE_HIT_TEST_METRICS> hitTestMetrics(actualHitTestCount);
 
@@ -948,7 +1008,6 @@ int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_
                     &actualHitTestCount
                 );
             }
-
             // Draw the selection ranges behind the text.
             if (actualHitTestCount > 0)
             {
@@ -956,17 +1015,11 @@ int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_
                 for (size_t i = 0; i < actualHitTestCount; ++i)
                 {
                     const DWRITE_HIT_TEST_METRICS& htm = hitTestMetrics[i];
-                    RectF highlightRect = {
-                        htm.left + X,
-                        htm.top + Y,
-                        (htm.left + htm.width),
-                        (htm.top + htm.height)
-                    };
+                    RectF highlightRect = { htm.left + X, htm.top + Y, (htm.left + X + htm.width), (htm.top + Y + htm.height) };
                     pD2DRenderTarget->FillRectangle(highlightRect, pTextBrushSel);
                 }
                 pD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             }
-
         }
 
         orgin.x = X;
@@ -978,19 +1031,10 @@ int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_
     return 0;
 }
 
-
-void EditableLayout::CopySinglePropertyRange(
-    IDWriteTextLayout* oldLayout,
-    U32 startPosForOld,
-    IDWriteTextLayout* newLayout,
-    U32 startPosForNew,
-    U32 length,
-    EditableLayout::CaretFormat* caretFormat
-)
+// Copies a single range of similar properties, from one old layout to a new one.
+void EditableLayout::CopySinglePropertyRange(IDWriteTextLayout* oldLayout, UINT32 startPosForOld, IDWriteTextLayout* newLayout, UINT32 startPosForNew,
+    UINT32 length, EditableLayout::CaretFormat* caretFormat)
 {
-    // Copies a single range of similar properties, from one old layout
-    // to a new one.
-
     DWRITE_TEXT_RANGE range = { startPosForNew, std::min(length, UINT32_MAX - startPosForNew) };
 
     // font collection
@@ -1068,79 +1112,48 @@ void EditableLayout::CopySinglePropertyRange(
     SafeRelease(&typography);
 }
 
-
-U32 CalculateRangeLengthAt(
-    IDWriteTextLayout* layout,
-    U32 pos
-)
+// Determines the length of a block of similarly formatted properties.
+UINT32 CalculateRangeLengthAt(IDWriteTextLayout* layout,  UINT32 pos)
 {
-    // Determines the length of a block of similarly formatted properties.
-
     // Use the first getter to get the range to increment the current position.
     DWRITE_TEXT_RANGE incrementAmount = { pos, 1 };
     DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_NORMAL;
 
-    layout->GetFontWeight(
-        pos,
-        &weight,
-        &incrementAmount
-    );
+    layout->GetFontWeight(pos, &weight, &incrementAmount);
 
-    U32 rangeLength = incrementAmount.length - (pos - incrementAmount.startPosition);
+    UINT32 rangeLength = incrementAmount.length - (pos - incrementAmount.startPosition);
     return rangeLength;
 }
 
-
-void EditableLayout::CopyRangedProperties(
-    IDWriteTextLayout* oldLayout,
-    U32 startPos,
-    U32 endPos, // an STL-like one-past position.
-    U32 newLayoutTextOffset,
-    IDWriteTextLayout* newLayout,
-    bool isOffsetNegative
-)
+// Copies properties that set on ranges.
+void EditableLayout::CopyRangedProperties(IDWriteTextLayout* oldLayout, UINT32 startPos,  UINT32 endPos, // an STL-like one-past position.
+    UINT32 newLayoutTextOffset, IDWriteTextLayout* newLayout, bool isOffsetNegative)
 {
-    // Copies properties that set on ranges.
-
-    U32 currentPos = startPos;
+    UINT32 currentPos = startPos;
+    UINT32 rangeLength;
     while (currentPos < endPos)
     {
-        U32 rangeLength = CalculateRangeLengthAt(oldLayout, currentPos);
+        rangeLength = CalculateRangeLengthAt(oldLayout, currentPos);
         rangeLength = std::min(rangeLength, endPos - currentPos);
         if (isOffsetNegative)
         {
-            CopySinglePropertyRange(
-                oldLayout,
-                currentPos,
-                newLayout,
-                currentPos - newLayoutTextOffset,
-                rangeLength
-            );
+            CopySinglePropertyRange(oldLayout, currentPos, newLayout, currentPos - newLayoutTextOffset, rangeLength);
         }
         else
         {
-            CopySinglePropertyRange(
-                oldLayout,
-                currentPos,
-                newLayout,
-                currentPos + newLayoutTextOffset,
-                rangeLength
-            );
+            CopySinglePropertyRange(oldLayout, currentPos, newLayout, currentPos + newLayoutTextOffset, rangeLength);
         }
         currentPos += rangeLength;
     }
 }
 
-
+// Inserts text and shifts all formatting.
 STDMETHODIMP EditableLayout::InsertTextAt(IN OUT IDWriteTextLayout** currentLayout,
-    IN OUT std::wstring& text,   U32 position,
+    IN OUT std::wstring& text,   UINT32 position,
     WCHAR const* textToInsert,                  // [lengthToInsert]
-    U32 textToInsertLength,
-    CaretFormat* caretFormat
-)
+    UINT32 textToInsertLength,
+    CaretFormat* caretFormat)
 {
-    // Inserts text and shifts all formatting.
-
     HRESULT hr = S_OK;
 
     // The inserted string gets all the properties of the character right before position.
@@ -1148,8 +1161,8 @@ STDMETHODIMP EditableLayout::InsertTextAt(IN OUT IDWriteTextLayout** currentLayo
 
     // Copy all the old formatting.
     IDWriteTextLayout* oldLayout = SafeAcquire(*currentLayout);
-    U32 oldTextLength = static_cast<U32>(text.length());
-    position = std::min(position, static_cast<U32>(text.size()));
+    UINT32 oldTextLength = static_cast<UINT32>(text.length());
+    position = std::min(position, static_cast<UINT32>(text.size()));
 
     try
     {
@@ -1192,25 +1205,21 @@ STDMETHODIMP EditableLayout::InsertTextAt(IN OUT IDWriteTextLayout** currentLayo
             // Last block (if it exists)
             CopyRangedProperties(oldLayout, position, oldTextLength, textToInsertLength, newLayout);
         }
-
         // Copy trailing end.
-        CopySinglePropertyRange(oldLayout, oldTextLength, newLayout, static_cast<U32>(text.length()), UINT32_MAX);
+        CopySinglePropertyRange(oldLayout, oldTextLength, newLayout, static_cast<UINT32>(text.length()), UINT32_MAX);
     }
-
     SafeRelease(&oldLayout);
 
     return S_OK;
 }
 
-
-STDMETHODIMP EditableLayout::RemoveTextAt(IN OUT IDWriteTextLayout** currentLayout, IN OUT std::wstring& text, U32 position, U32 lengthToRemove)
+// Removes text and shifts all formatting.
+STDMETHODIMP EditableLayout::RemoveTextAt(IN OUT IDWriteTextLayout** currentLayout, IN OUT std::wstring& text, UINT32 position, UINT32 lengthToRemove)
 {
-    // Removes text and shifts all formatting.
     HRESULT hr = S_OK;
-
     // copy all the old formatting.
     IDWriteTextLayout* oldLayout = SafeAcquire(*currentLayout);
-    U32 oldTextLength = static_cast<U32>(text.length());
+    UINT32 oldTextLength = static_cast<UINT32>(text.length());
 
     try
     {
@@ -1246,7 +1255,7 @@ STDMETHODIMP EditableLayout::RemoveTextAt(IN OUT IDWriteTextLayout** currentLayo
             // Last block (if it exists, we increment past the deleted text)
             CopyRangedProperties(oldLayout, position + lengthToRemove, oldTextLength, lengthToRemove, newLayout, true);
         }
-        CopySinglePropertyRange(oldLayout, oldTextLength, newLayout, static_cast<U32>(text.length()), UINT32_MAX);
+        CopySinglePropertyRange(oldLayout, oldTextLength, newLayout, static_cast<UINT32>(text.length()), UINT32_MAX);
     }
 
     SafeRelease(&oldLayout);
@@ -1254,11 +1263,9 @@ STDMETHODIMP EditableLayout::RemoveTextAt(IN OUT IDWriteTextLayout** currentLayo
     return S_OK;
 }
 
-
 STDMETHODIMP EditableLayout::Clear(IN OUT IDWriteTextLayout** currentLayout, IN OUT std::wstring& text)
 {
     HRESULT hr = S_OK;
-
     try
     {
         text.clear();
@@ -1272,15 +1279,12 @@ STDMETHODIMP EditableLayout::Clear(IN OUT IDWriteTextLayout** currentLayout, IN 
     {
         hr = RecreateLayout(currentLayout, text);
     }
-
     return hr;
 }
 
-
+// Copies global properties that are not range based.
 void EditableLayout::CopyGlobalProperties(IDWriteTextLayout* oldLayout, IDWriteTextLayout* newLayout)
 {
-    // Copies global properties that are not range based.
-
     newLayout->SetTextAlignment(oldLayout->GetTextAlignment());
     newLayout->SetParagraphAlignment(oldLayout->GetParagraphAlignment());
     newLayout->SetWordWrapping(oldLayout->GetWordWrapping());
@@ -1400,10 +1404,9 @@ void RenderTargetD2D::Resize(UINT width, UINT height)
     target_->Resize(size);
 }
 
+// Updates rendering parameters according to current monitor.
 void RenderTargetD2D::UpdateMonitor()
 {
-    // Updates rendering parameters according to current monitor.
-
     HMONITOR monitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
     if (monitor != hmonitor_)
     {
@@ -1451,7 +1454,7 @@ void RenderTargetD2D::EndDraw()
 }
 
 
-void RenderTargetD2D::Clear(U32 color)
+void RenderTargetD2D::Clear(UINT32 color)
 {
     target_->Clear(D2D1::ColorF(color));
 }
@@ -1562,7 +1565,7 @@ ID2D1Brush* RenderTargetD2D::GetCachedBrush(const DrawingEffect* effect)
 {
     if (effect && brush_)
     {
-        U32 bgra = effect->GetColor();
+        UINT32 bgra = effect->GetColor();
         float alpha = (bgra >> 24) / 255.0f;
         brush_->SetColor(D2D1::ColorF(bgra, alpha));
         return brush_;

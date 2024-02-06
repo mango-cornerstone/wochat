@@ -54,6 +54,7 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #endif
 
 // Releases a COM object and nullifies pointer.
+
 template <typename InterfaceType>
 inline void SafeRelease(InterfaceType** currentObject)
 {
@@ -302,12 +303,16 @@ private:
     {
         HRESULT hr = S_OK;
         IDWriteTextLayout* newLayout = NULL;
+        FLOAT maxWidth = (*currentLayout)->GetMaxWidth();
+        FLOAT maxHeight = (*currentLayout)->GetMaxHeight();
+        UINT32 stringLength = static_cast<UINT32>(text.length());
+
         hr = factory_->CreateTextLayout(
             text.c_str(),
-            static_cast<UINT32>(text.length()),
+            stringLength,
             *currentLayout,
-            (*currentLayout)->GetMaxWidth(),
-            (*currentLayout)->GetMaxHeight(),
+            maxWidth,
+            maxHeight,
             &newLayout
         );
 
@@ -330,12 +335,9 @@ private:
     );
 
     static void CopySinglePropertyRange(
-        IDWriteTextLayout* oldLayout,
-        U32 startPosForOld,
-        IDWriteTextLayout* newLayout,
-        U32 startPosForNew,
-        U32 length,
-        EditableLayout::CaretFormat* caretFormat = NULL
+        IDWriteTextLayout* oldLayout, U32 startPosForOld,
+        IDWriteTextLayout* newLayout, U32 startPosForNew,
+        U32 length, EditableLayout::CaretFormat* caretFormat = NULL
     );
 
 public:
