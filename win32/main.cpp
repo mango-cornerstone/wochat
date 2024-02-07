@@ -162,6 +162,7 @@ private:
 	int m3 = 0;
 	int m4 = 0;
 	int m5 = 0;
+	int mdrag = 0;
 
 	ID2D1HwndRenderTarget* m_pD2DRenderTarget = nullptr;
 	ID2D1Bitmap* m_pixelBitmap0               = nullptr;
@@ -426,11 +427,28 @@ public:
 
 	LRESULT OnLButtonDown(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		int xPos = GET_X_LPARAM(lParam);
+		int yPos = GET_Y_LPARAM(lParam);
+
+		if (DUIWindowInDragMode())
+		{
+			mdrag = 1;
+			if (::GetCapture() != m_hWnd)
+			{
+				SetCapture();
+			}
+		}
+
 		return 0;
 	}
 
 	LRESULT OnLButtonUp(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		if (::GetCapture() == m_hWnd)
+		{
+			mdrag = 0;
+			::ReleaseCapture();
+		}
 		return 0;
 	}
 
@@ -1014,7 +1032,7 @@ public:
 			}
 		}
 
-		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] threads: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, (int)g_threadCount,
+		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] drag: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, mdrag,
 			m0,m1,m2,m3,m4,m5);
 		::SetWindowTextW(m_hWnd, (LPCWSTR)xtitle);
 
@@ -1345,6 +1363,8 @@ static int InitInstance(HINSTANCE hInstance)
 
 	if (iRet)
 		return 5;
+
+	//GetPKFromSK(g_SK, g_PK);
 
 	Raw2HexString(g_PK, 33, g_PKText, nullptr);
 	for (int i = 0; i < 66; i++)

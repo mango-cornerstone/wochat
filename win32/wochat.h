@@ -131,6 +131,8 @@ int InitWoChatDatabase(LPCWSTR lpszPath);
 
 int PushSendMessageQueue(MessageTask* message_task);
 
+int GetPKFromSK(U8* sk, U8* pk);
+
 int Raw2HexString(U8* input, U8 len, U8* output, U8* outlen);
 int HexString2Raw(U8* input, U8 len, U8* output, U8* outlen);
 int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);

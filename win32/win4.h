@@ -59,6 +59,35 @@ public:
 		return r;
 	}
 
+	int Do_DUI_CREATE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
+	{ 
+		// determine the line height
+		IDWriteTextLayout* pTextLayout = nullptr;
+		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+		g_pDWriteFactory->CreateTextLayout(
+			L"X",
+			1,
+			pTextFormat,
+			1000.f,
+			static_cast<FLOAT>(1),
+			(IDWriteTextLayout**)(&pTextLayout));
+
+		if (pTextLayout)
+		{
+			DWRITE_TEXT_METRICS tm;
+			pTextLayout->GetMetrics(&tm);
+			assert(tm.lineCount == 1);
+			m_sizeLine.cy = static_cast<int>(tm.height) + 1;
+		}
+		else
+		{
+			m_sizeLine.cy = 16;
+		}
+		SafeRelease(&pTextLayout);
+
+		return 0; 
+	}
+
 	int UpdateMyMessage(MessageTask* mt)
 	{
 		int i;
@@ -96,7 +125,7 @@ public:
 		{  // determine the height of the text layout
 			IDWriteTextLayout* pTextLayout = nullptr;
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
-			FLOAT Wf = static_cast<FLOAT>(((w+1) >> 1)); // the text width is half of the window
+			FLOAT Wf = static_cast<FLOAT>(w*2/3); // the text width is half of the window
 			g_pDWriteFactory->CreateTextLayout(
 				p->message,
 				p->msgLen,
@@ -110,7 +139,7 @@ public:
 				pTextLayout->GetMetrics(&(p->tm));
 				p->height = static_cast<int>(p->tm.height) + 1 + WIN4_GAP_MESSAGE;
 				if (p->tm.lineCount > 1) // more than 1 line
-					p->width = ((w + 1) >> 1);
+					p->width = (w * 2 / 3);
 				else
 					p->width = static_cast<int>(p->tm.width);
 			}
@@ -124,6 +153,8 @@ public:
 		}
 
 		p->state = XMESSAGE_FROM_ME;
+		if(p->msgLen%2)
+			p->state = XMESSAGE_FROM_SHE;
 		p->icon = (U32*)xbmpHeadMe;
 		p->w = p->h = 34;
 		p->next = p->prev = nullptr;
@@ -184,6 +215,7 @@ public:
 	int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{ 
 		U32 color;
+		bool isMe;
 		int x, y, dx, dy, W, H, pos;
 		XChatMessage* p;
 		IDWriteTextLayout* pTextLayout = nullptr;
@@ -195,7 +227,7 @@ public:
 
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
-		FLOAT Wf = static_cast<FLOAT>((w+1) >> 1);
+		FLOAT Wf = static_cast<FLOAT>(w * 2 / 3);
 
 		if (m_chatGroup)
 		{
@@ -205,22 +237,26 @@ public:
 			p = m_chatGroup->headMessage;
 			while (nullptr != p)
 			{
+				isMe = (XMESSAGE_FROM_ME & p->state);
 				H = p->height;
 				if (pos + H > m_ptOffset.y && pos < m_ptOffset.y + h) // we are in the visible area
 				{
 					dy = pos - m_ptOffset.y;
-					dx = XWIN4_OFFSET + XWIN4_OFFSET + 34;
+					dx = (XWIN4_OFFSET<<2) + 34;
 
-					if (XMESSAGE_FROM_ME & p->state) // me
+					if (isMe) // this message is from me
 					{
-						dx = ((w+1)>>1) - 34 - m_scrollWidth - XWIN4_OFFSET - XWIN4_OFFSET;
+						dx = (w/3) - 34 - m_scrollWidth - XWIN4_OFFSET - XWIN4_OFFSET;
 					}
 
 					bkgarea.left = static_cast<FLOAT>(m_area.left + dx) - XWIN4_OFFSET - XWIN4_OFFSET;
 					bkgarea.top = static_cast<FLOAT>(m_area.top + dy);
 					bkgarea.right = bkgarea.left + static_cast<FLOAT>(p->width) + XWIN4_OFFSET + XWIN4_OFFSET;
 					bkgarea.bottom = bkgarea.top + static_cast<FLOAT>(p->height - WIN4_GAP_MESSAGE) + XWIN4_OFFSET + XWIN4_OFFSET;
-					pD2DRenderTarget->FillRectangle(bkgarea, pBkgBrush0);
+					if(isMe)
+						pD2DRenderTarget->FillRectangle(bkgarea, pBkgBrush0);
+					else
+						pD2DRenderTarget->FillRectangle(bkgarea, pBkgBrush1);
 
 					g_pDWriteFactory->CreateTextLayout(
 						p->message,

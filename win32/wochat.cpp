@@ -2,6 +2,36 @@
 #include "mosquitto.h"
 #include "wochat.h"
 #include "mbedtls/base64.h"
+#include "mbedtls/sha256.h"
+#include "secp256k1.h"
+
+
+int GetPKFromSK(U8* sk, U8* pk)
+{
+	int ret = 1;
+	secp256k1_context* ctx;
+	
+	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+	if (ctx)
+	{
+		int return_val;
+		size_t len = 33;
+		U8 compressed_pubkey[33];
+		secp256k1_pubkey pubkey;
+
+		return_val = secp256k1_ec_pubkey_create(ctx, &pubkey, sk);
+		return_val = secp256k1_ec_pubkey_serialize(ctx, compressed_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED);
+		if (len == 33)
+		{
+			for (int i = 0; i < 33; i++)
+				pk[i] = compressed_pubkey[i];
+			ret = 0;
+		}
+		secp256k1_context_destroy(ctx);
+	}
+
+	return ret;
+}
 
 int PushSendMessageQueue(MessageTask* message_task)
 {
@@ -375,11 +405,18 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	int ret = 0;
 	Mosquitto mq;
 	HWND hWndUI;
-
+	MemoryPoolContext mempool;
 	InterlockedIncrement(&g_threadCount);
 
 	hWndUI = (HWND)(lpData);
 	ATLASSERT(::IsWindow(hWndUI));
+
+	mempool = mempool_create("MQTT_SUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+	if (nullptr == mempool)
+	{
+		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 2, 0);
+		goto QuitMQTTSubThread;
+	}
 
 	mq = MQTT::MQTT_SubInit(hWndUI, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
 
@@ -399,6 +436,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	MQTT::MQTT_SubLoop(mq, &g_Quit);  // main loop go here.
 	
 QuitMQTTSubThread:
+	mempool_destroy(mempool);
 	MQTT::MQTT_SubTerm(mq);
 	InterlockedDecrement(&g_threadCount);
 	return 0;
@@ -413,11 +451,14 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 	MemoryPoolContext mempool;
 	MessageTask* p;
 	char topic[67] = { 0 };
-	char* msgbody = nullptr;
-	int   msglen = 0;
+	U8    sha256hash[32] = { 0 };
+	U8*   msgbody = nullptr;
+	U32   msglen = 0;
+	U32*  pLen;
+	U8*   p0;
+	U8*   p1;
 	size_t encoded_len;
 	size_t output_len;
-	char* encoded_string;
 
 	InterlockedIncrement(&g_threadCount);
 
@@ -454,17 +495,48 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 
 		while (p)
 		{
-			Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
-
-			encoded_len = mbedtls_base64_encode(NULL, 0, &output_len, (unsigned char*)p->message, (p->msgLen << 1));
-			encoded_string = (char*)palloc(mempool, output_len + 1);
-			if (encoded_string)
+			msglen = p->msgLen * sizeof(wchar_t);
+			mbedtls_base64_encode(NULL, 0, &output_len, (unsigned char*)p->message, msglen);
+			msgbody = (U8*)palloc(mempool, 67 + 9 + 65 + output_len);
+			
+			if (msgbody)
 			{
-				mbedtls_base64_encode((unsigned char*)encoded_string, output_len, &output_len, (unsigned char*)p->message, p->msgLen);
-				MQTT::MQTT_PubMessage(mq, topic, encoded_string, output_len);
-				pfree(encoded_string);
+				Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
+				Raw2HexString(p->pubkey, 33, msgbody, nullptr);
+				msgbody[66] = '|';
+				Raw2HexString((U8*)&msglen, 4, msgbody+67, nullptr);
+				msgbody[75] = '|';
+
+				{
+					mbedtls_sha256_context sha256_context;
+					mbedtls_sha256_init(&sha256_context);
+					mbedtls_sha256_starts(&sha256_context, 0);
+					mbedtls_sha256_update(&sha256_context, (U8*)p->message, msglen);
+					mbedtls_sha256_finish(&sha256_context, sha256hash);
+					p0 = msgbody + 67 + 9;
+					Raw2HexString(sha256hash, 32, p0, nullptr);
+					p0[64] = '|';
+				}
+				p0 = msgbody + 67 + 9 + 65;
+				mbedtls_base64_encode(p0, output_len, &encoded_len, (unsigned char*)p->message, msglen);
+
+				MQTT::MQTT_PubMessage(mq, topic, (char*)msgbody, 67 + 9 + 65 + output_len);
+#if 0
+				encoded_len = mbedtls_base64_encode(NULL, 0, &output_len, (unsigned char*)p->message, msglen);
+				encoded_string = (char*)palloc(mempool, output_len + 1);
+				if (encoded_string)
+				{
+					mbedtls_base64_encode((unsigned char*)encoded_string, output_len, &output_len, (unsigned char*)p->message, p->msgLen);
+					MQTT::MQTT_PubMessage(mq, topic, encoded_string, output_len);
+					pfree(encoded_string);
+				}
+#endif
+				InterlockedIncrement(&(p->state)); // we have processed this task.
+
+				pfree(msgbody);
+				msgbody = nullptr;
 			}
-			InterlockedIncrement(&(p->state)); // we have processed this task.
+
 			p = p->next;
 		}
 	}

@@ -381,16 +381,18 @@ public:
                         static_cast<FLOAT>(m_area.right),
                         static_cast<FLOAT>(m_area.bottom)
                     );
+
                     pD2DRenderTarget->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+
                     pD2DRenderTarget->DrawBitmap(pBitmap, &rect); // do the real draw
+                    SafeRelease(&pBitmap);
+                    if (DUI_PROP_HANDLETEXT & m_property) // if this virtual window has text to draw, we use directwrite to draw the text
+                    {
+                        DrawText(surface, brushText, brushSelText, brushCaret, brushBkg0, brushBkg1);
+                    }
+
                     pD2DRenderTarget->PopAxisAlignedClip();
                     r = 1;
-                }
-                SafeRelease(&pBitmap);
-
-                if (DUI_PROP_HANDLETEXT & m_property) // if this virtual window has text to draw, we use directwrite to draw the text
-                {
-                    DrawText(surface, brushText, brushSelText, brushCaret, brushBkg0, brushBkg1);
                 }
             }
         }
@@ -566,13 +568,13 @@ public:
     int On_DUI_MOUSEWHEEL(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
         int r = DUI_STATUS_NODRAW;
-
         if ((DUI_PROP_HANDLEWHEEL & m_property) && !DUIWindowInDragMode())
         {
             int xPos = GET_X_LPARAM(lParam);
             int yPos = GET_Y_LPARAM(lParam);
+            bool bInMyArea = XWinPointInRect(xPos, yPos, &m_area); // is the point in my area?
 
-            if (XWinPointInRect(xPos, yPos, &m_area))
+            if (bInMyArea)
             {
                 int h = m_area.bottom - m_area.top;
                 int delta = GET_WHEEL_DELTA_WPARAM(wParam);
@@ -620,6 +622,7 @@ public:
         int yPos = GET_Y_LPARAM(lParam);
         int w = m_area.right - m_area.left;
         int h = m_area.bottom - m_area.top;
+        bool bInMyArea = XWinPointInRect(xPos, yPos, &m_area); // is the point in my area?
 
         if (XDragMode::DragNone != m_DragMode) // this window is in drag mode
         {
@@ -632,15 +635,41 @@ public:
                 m_ptOffset.y = m_sizeAll.cy - h;
             r++;
         }
-        else
+        else  // this window is not in drag mode
         {
             int dx = -1;
             int dy = -1;
             XControl* xctl;
-            if (XWinPointInRect(xPos, yPos, &m_area)) // the mosue is in this area
+            if (bInMyArea) // the mosue is in my area
             {
                 dx = xPos - m_area.left;
                 dy = yPos - m_area.top;
+
+                if (DUI_PROP_HASVSCROLL & m_property) // handle the vertical bar
+                {
+                    U32 statusOld = m_status;
+                    m_status &= (~DUI_STATUS_VSCROLL); // let the vertical bar to disappear at first
+                    if (xPos >= (m_area.right - m_scrollWidth)) // the mouse is in the right vertical bar area
+                    {
+                        if (m_sizeAll.cy > h)   // the total page size is greater than the real window size, we need to show the vertical bar
+                        {
+                            int thumb_start = (m_ptOffset.y * h) / m_sizeAll.cy; // the position of the thumb relative to m_area
+                            int thumb_height = (h * h) / m_sizeAll.cy;  // the thumb height, the bigger m_sizeAll.cy, the smaller of thumb height
+                            if (thumb_height < DUI_MINIMAL_THUMB_SIZE)
+                                thumb_height = DUI_MINIMAL_THUMB_SIZE; // we keep the thumb mini size to some pixels
+                            m_status |= DUI_STATUS_VSCROLL; // show vertical bar
+                            assert(m_ptOffset.y >= 0);
+                            assert(m_ptOffset.y <= m_sizeAll.cy - h);  // the range of m_ptOffset.y is from 0 to m_sizeAll.cy - h
+                            if ((statusOld & DUI_STATUS_VSCROLL) != DUI_STATUS_VSCROLL)
+                                r++;
+                        }
+                    }
+                    else // we should not show the vertical bar in this case
+                    {
+                        if ((statusOld & DUI_STATUS_VSCROLL) == DUI_STATUS_VSCROLL)
+                            r++;
+                    }
+                }
             }
             else // the mouse is not in our area, we do a quick check to be sure this window need to be redraw
             {
@@ -688,7 +717,9 @@ public:
         int xPos = GET_X_LPARAM(lParam);
         int yPos = GET_Y_LPARAM(lParam);
 
-        if (XWinPointInRect(xPos, yPos, &m_area))
+        bool bInMyArea = XWinPointInRect(xPos, yPos, &m_area); // is the point in my area?
+
+        if (bInMyArea)
         {
             // transfer the coordination from real window to local virutal window
             dx = xPos - m_area.left;
@@ -748,24 +779,6 @@ public:
                             r++;   // the old status has VSCROLL, but now we do not have, so we have to redraw the screen
                     }
                 }
-
-                hit = -1;
-                for (int i = 0; i < m_maxControl; i++)
-                {
-                    xctl = m_controlArray[i];
-                    assert(nullptr != xctl);
-                    assert(xctl->m_Id == i);
-                    if (xctl->IsOverMe(dx, dy))  // we find the control that the mouse is hovering
-                    {
-                        hit = i;
-                        break;
-                    }
-                }
-                if ((-1 == hit) && (DUI_PROP_MOVEWIN & m_property))
-                {
-                    // if the mouse does not hit the button, we can move the whole real window
-                    PostWindowMessage(WM_NCLBUTTONDOWN, HTCAPTION, lParam);
-                }
             }
         }
         else
@@ -782,6 +795,12 @@ public:
             assert(nullptr != xctl);
             assert(xctl->m_Id == i);
             r += xctl->DoMouseLBClickDown(dx, dy, &idxActive);
+        }
+
+        if (DUI_PROP_MOVEWIN & m_property)
+        {
+            if(bInMyArea && (- 1 == idxActive))  // if the mouse does not hit the button, we can move the whole real window
+                PostWindowMessage(WM_NCLBUTTONDOWN, HTCAPTION, lParam);
         }
 
         if (DUI_PROP_BTNACTIVE & m_property) // this window has active button, just like radio button group
