@@ -103,11 +103,13 @@ public:
 		mem = (U8*)palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
+			wchar_t title[67];
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_TITLE);
 			lb->Init(id, "W3TITLE", g_pDWriteFactory, pTextFormat);
-			lb->setText((wchar_t*)g_PKTextW, wcslen(g_PKTextW));
+			Raw2HexStringW(g_PKTo, 33, title, nullptr);
+			lb->setText((wchar_t*)title, 66);
 			m_controlArray[id] = lb;
 		}
 		m_maxControl = 2;

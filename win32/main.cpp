@@ -65,8 +65,9 @@ wchar_t				g_AppPath[MAX_PATH + 1] = {0};
 // private key and public key
 U8					g_SK[32] = { 0 };
 U8					g_PK[33] = { 0 };
-U8					g_PKText[67] = { 0 };
-wchar_t				g_PKTextW[67] = { 0 };
+U8					g_PKTo[33] = { 0 };
+//U8					g_PKText[67] = { 0 };
+//wchar_t				g_PKTextW[67] = { 0 };
 
 CAtlWinModule _Module;
 
@@ -1359,19 +1360,20 @@ static int InitInstance(HINSTANCE hInstance)
 	if (iRet)
 		return iRet;
 
-	iRet = GetKeys(g_AppPath, g_SK, g_PK);
+	iRet = GetKeys(g_AppPath, g_SK, g_PKTo);
 
 	if (iRet)
 		return 5;
 
-	//GetPKFromSK(g_SK, g_PK);
+	GetPKFromSK(g_SK, g_PK);
 
+#if 0
 	Raw2HexString(g_PK, 33, g_PKText, nullptr);
 	for (int i = 0; i < 66; i++)
 		g_PKTextW[i] = g_PKText[i];
 
 	g_PKTextW[66] = L'\0';
-
+#endif
 	iRet = MQTT::MQTT_Init();
 
 	if (MOSQ_ERR_SUCCESS != iRet)
@@ -1445,8 +1447,26 @@ static int InitInstance(HINSTANCE hInstance)
 		int i = 321;
 		DebugPrintf("================The value is %d\n", i);
 	}
-#endif
 
+	{
+		U8 sk1[32];
+		U8 sk2[32];
+		U8 pk1[33];
+		U8 pk2[33];
+		U8 K1[32] = { 0 };
+		U8 K2[32] = { 0 };
+		int ret;
+
+		HexString2Raw((U8*)"9614310CE21149F83E6FA13E30FAA6B6233F6ED0344BC2F5716921EF1988400B", 64, sk1, nullptr);
+		HexString2Raw((U8*)"2D65976AA60FDC65451A6244E4668AC9D757CEF2426B9FCECAC3BA0A52226EC4", 64, sk2, nullptr);
+		HexString2Raw((U8*)"03DB0E39AFB91AD07B0088B9B0EDDF5903230BC1C2F9AA08104FE0F10D4BAA0E0D", 66, pk1, nullptr);
+		HexString2Raw((U8*)"021790BF052D7940B861664ACA9729B48BD45498217A910CDF90D56C76045B9F7D", 66, pk2, nullptr);
+
+		ret = GetKeyFromSKAndPK(sk1, pk2, K1);
+		ret = GetKeyFromSKAndPK(sk2, pk1, K2);
+		ret++;
+	}
+#endif
 	return iRet;
 }
 

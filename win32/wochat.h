@@ -32,8 +32,9 @@ extern IDWriteFactory* g_pDWriteFactory;
 
 IDWriteTextFormat* GetTextFormat(U8 idx);
 
-extern wchar_t g_PKTextW[67];
-extern U8	   g_PK[33];
+extern U8  g_SK[32];
+extern U8  g_PK[33];
+extern U8  g_PKTo[33];
 
 int GetKeys(LPCTSTR path, U8* sk, U8* pk);
 
@@ -132,6 +133,7 @@ int InitWoChatDatabase(LPCWSTR lpszPath);
 int PushSendMessageQueue(MessageTask* message_task);
 
 int GetPKFromSK(U8* sk, U8* pk);
+int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key);
 
 int Raw2HexString(U8* input, U8 len, U8* output, U8* outlen);
 int HexString2Raw(U8* input, U8 len, U8* output, U8* outlen);
@@ -139,5 +141,6 @@ int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);
 int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen);
 
 int GetCurrentPublicKey(void* parent, U8* pk);
+
 
 #endif // __WT_WOCHAT_H__

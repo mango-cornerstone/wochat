@@ -65,11 +65,11 @@ public:
 				m_chatgroupSelected = m_chatgroupRoot;
 				for (int i = 0; i < 33; i++)
 				{
-					p->pubkey[i] = g_PK[i];
+					p->pubkey[i] = g_PKTo[i];
 				}
 
 				p->icon = (U32*)xbmpGroup;
-				p->name = (wchar_t*)g_PKTextW;
+				p->name = L"TEST";
 				p->w = ICON_HEIGHT;
 				p->h = ICON_HEIGHT;
 				p->height = ITEM_HEIGHT;

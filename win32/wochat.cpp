@@ -3,7 +3,39 @@
 #include "wochat.h"
 #include "mbedtls/base64.h"
 #include "mbedtls/sha256.h"
+#include "mbedtls/chacha20.h"
 #include "secp256k1.h"
+#include "secp256k1_ecdh.h"
+
+int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key)
+{
+	int ret = 1;
+	secp256k1_context* ctx;
+	secp256k1_pubkey pubkey;
+	U8 K[32] = { 0 };
+
+	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+	if (ctx)
+	{
+		ret = secp256k1_ec_pubkey_parse(ctx, &pubkey, pk, 33);
+		if (1 != ret)
+		{
+			secp256k1_context_destroy(ctx);
+			ret = 1;
+			return ret;
+		}
+		ret = secp256k1_ecdh(ctx, K, &pubkey, sk, NULL, NULL);
+		if (ret && key)
+		{
+			for (int i = 0; i < 32; i++)
+				key[i] = K[i];
+		}
+
+		secp256k1_context_destroy(ctx);
+		ret = 0;
+	}
+	return ret;
+}
 
 
 int GetPKFromSK(U8* sk, U8* pk)
@@ -454,9 +486,6 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 	U8    sha256hash[32] = { 0 };
 	U8*   msgbody = nullptr;
 	U32   msglen = 0;
-	U32*  pLen;
-	U8*   p0;
-	U8*   p1;
 	size_t encoded_len;
 	size_t output_len;
 
@@ -496,29 +525,45 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 		while (p)
 		{
 			msglen = p->msgLen * sizeof(wchar_t);
-			mbedtls_base64_encode(NULL, 0, &output_len, (unsigned char*)p->message, msglen);
-			msgbody = (U8*)palloc(mempool, 67 + 9 + 65 + output_len);
+			mbedtls_base64_encode(NULL, 0, &output_len, NULL, (msglen + 4 + 32)); // get the encoded length only
+			msgbody = (U8*)palloc(mempool, 67 + output_len);
 			
 			if (msgbody)
 			{
+				U8* MSG = (U8*)palloc(mempool, msglen + 4 + 32);
+
 				Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
-				Raw2HexString(p->pubkey, 33, msgbody, nullptr);
+				Raw2HexString(g_PK, 33, msgbody, nullptr);
 				msgbody[66] = '|';
-				Raw2HexString((U8*)&msglen, 4, msgbody+67, nullptr);
-				msgbody[75] = '|';
+
+				U32* pLen = (U32*)(MSG);
+				*pLen = (U32)msglen;
 
 				{
 					mbedtls_sha256_context sha256_context;
 					mbedtls_sha256_init(&sha256_context);
 					mbedtls_sha256_starts(&sha256_context, 0);
-					mbedtls_sha256_update(&sha256_context, (U8*)p->message, msglen);
-					mbedtls_sha256_finish(&sha256_context, sha256hash);
-					p0 = msgbody + 67 + 9;
-					Raw2HexString(sha256hash, 32, p0, nullptr);
-					p0[64] = '|';
+					mbedtls_sha256_update(&sha256_context,(const unsigned char*)p->message, msglen);
+					mbedtls_sha256_finish(&sha256_context, MSG + 4);
 				}
-				p0 = msgbody + 67 + 9 + 65;
-				mbedtls_base64_encode(p0, output_len, &encoded_len, (unsigned char*)p->message, msglen);
+
+				{
+					int m;
+					U8 Key[32] = { 0 };
+					U8 nonce[12];
+					GetKeyFromSKAndPK(g_SK, p->pubkey, Key);
+					mbedtls_chacha20_context cxt;
+					mbedtls_chacha20_init(&cxt);
+					m = mbedtls_chacha20_setkey(&cxt, Key);
+					for(int i=0; i<12; i++)
+						nonce[i] = i;
+					m = mbedtls_chacha20_starts(&cxt, nonce, 0);
+					m = mbedtls_chacha20_update(&cxt, msglen, (const unsigned char*)p->message, MSG + 4 + 32);
+					mbedtls_chacha20_free(&cxt);
+				}
+				mbedtls_base64_encode(msgbody+67, output_len, &encoded_len, (const unsigned char*)MSG, (msglen + 4 + 32));
+
+				pfree(MSG);
 
 				MQTT::MQTT_PubMessage(mq, topic, (char*)msgbody, 67 + 9 + 65 + output_len);
 #if 0
