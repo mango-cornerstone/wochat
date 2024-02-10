@@ -65,6 +65,45 @@ int GetPKFromSK(U8* sk, U8* pk)
 	return ret;
 }
 
+int PushReceiveMessageQueue(MessageTask* message_task)
+{
+	int ret = 0;
+	MQTTSubData* pd = &g_SubData;
+	MessageTask* p;
+
+	EnterCriticalSection(&g_csMQTTSub);
+
+	while (pd->task) // scan the link to find the message that has been processed
+	{
+		p = pd->task->next;
+		if (0 == pd->task->state) // this task is not processed yet.
+		{
+			break;
+		}
+		pfree(pd->task->message);
+		pfree(pd->task);
+		pd->task = p;
+	}
+
+	if (nullptr == pd->task) // there is no task in the queue
+	{
+		pd->task = message_task;
+		LeaveCriticalSection(&g_csMQTTSub);
+		return 0;
+	}
+	assert(pd->task);
+	p = pd->task;
+	while (p->next)
+		p = p->next;
+
+	p->next = message_task;
+	message_task->next = nullptr;
+
+	LeaveCriticalSection(&g_csMQTTSub);
+
+	return 0;
+}
+
 int PushSendMessageQueue(MessageTask* message_task)
 {
 	MQTTPubData* pd;
@@ -191,6 +230,7 @@ int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen)
 	return 0;
 }
 
+#if 0
 int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen)
 {
 	U8 oneChar, hiValue, lowValue, i;
@@ -228,7 +268,7 @@ int AESEncrypt(U8* input, int length, U8* output)
 
 	return 0;
 }
-
+#endif
 #define SQL_STMT_MAX_LEN		1024
 
 int InitWoChatDatabase(LPCWSTR lpszPath)
@@ -309,7 +349,6 @@ int ConvertBinToHex(U8* pk, U16 len, U8* pkHex)
 
 	return ret;
 }
-#endif
 
 int GetKeys(LPCTSTR path, U8* sk, U8* pk)
 {
@@ -391,7 +430,6 @@ int GetKeys(LPCTSTR path, U8* sk, U8* pk)
 		}
 	}
 
-#if 0
 	if (!bRet)
 	{
 		int fd;
@@ -427,10 +465,11 @@ int GetKeys(LPCTSTR path, U8* sk, U8* pk)
 		_write(fd, text, len);
 		_close(fd);
 	}
-#endif
     return ret;
 }
+#endif
 
+static MQTTSubPrivateData spd;
 
 DWORD WINAPI MQTTSubThread(LPVOID lpData)
 {
@@ -450,7 +489,10 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		goto QuitMQTTSubThread;
 	}
 
-	mq = MQTT::MQTT_SubInit(hWndUI, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
+	spd.hWnd = hWndUI;
+	spd.mempool = mempool;
+
+	mq = MQTT::MQTT_SubInit(&spd, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
 
 	if (nullptr == mq) // something is wrong in MQTT sub routine
 	{
@@ -458,7 +500,12 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		goto QuitMQTTSubThread;
 	}
 
-	ret = MQTT::MQTT_AddSubTopic(CLIENT_SUB, "03342EF59638622ABEE545AFABA85463932DA66967F2BA4EE6254F9988BEE5F0C2");
+	{
+		U8 topic[67];
+		Raw2HexString(g_PK, 33, topic, nullptr);
+		ret = MQTT::MQTT_AddSubTopic(CLIENT_SUB, (char*)topic);
+	}
+
 	if(ret)
 	{
 		PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 2, 0);
@@ -531,51 +578,44 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 			if (msgbody)
 			{
 				U8* MSG = (U8*)palloc(mempool, msglen + 4 + 32);
-
-				Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
-				Raw2HexString(g_PK, 33, msgbody, nullptr);
-				msgbody[66] = '|';
-
-				U32* pLen = (U32*)(MSG);
-				*pLen = (U32)msglen;
-
+				if (MSG)
 				{
-					mbedtls_sha256_context sha256_context;
-					mbedtls_sha256_init(&sha256_context);
-					mbedtls_sha256_starts(&sha256_context, 0);
-					mbedtls_sha256_update(&sha256_context,(const unsigned char*)p->message, msglen);
-					mbedtls_sha256_finish(&sha256_context, MSG + 4);
+
+					Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
+					Raw2HexString(g_PK, 33, msgbody, nullptr);
+					msgbody[66] = '|';
+
+					U32* pLen = (U32*)(MSG);
+					*pLen = (U32)msglen;
+
+					{
+						mbedtls_sha256_context sha256_context;
+						mbedtls_sha256_init(&sha256_context);
+						mbedtls_sha256_starts(&sha256_context, 0);
+						mbedtls_sha256_update(&sha256_context, (const unsigned char*)p->message, msglen);
+						mbedtls_sha256_finish(&sha256_context, MSG + 4);
+					}
+
+					{
+						int m;
+						U8 Key[32] = { 0 };
+						U8 nonce[12];
+						GetKeyFromSKAndPK(g_SK, p->pubkey, Key);
+						mbedtls_chacha20_context cxt;
+						mbedtls_chacha20_init(&cxt);
+						m = mbedtls_chacha20_setkey(&cxt, Key);
+						for (int i = 0; i < 12; i++)
+							nonce[i] = i;
+						m = mbedtls_chacha20_starts(&cxt, nonce, 0);
+						m = mbedtls_chacha20_update(&cxt, 4 + 32, (const unsigned char*)MSG, MSG);
+						m = mbedtls_chacha20_update(&cxt, msglen, (const unsigned char*)p->message, MSG + 4 + 32);
+						mbedtls_chacha20_free(&cxt);
+					}
+					mbedtls_base64_encode(msgbody + 67, output_len, &encoded_len, (const unsigned char*)MSG, (msglen + 4 + 32));
+					pfree(MSG);
 				}
 
-				{
-					int m;
-					U8 Key[32] = { 0 };
-					U8 nonce[12];
-					GetKeyFromSKAndPK(g_SK, p->pubkey, Key);
-					mbedtls_chacha20_context cxt;
-					mbedtls_chacha20_init(&cxt);
-					m = mbedtls_chacha20_setkey(&cxt, Key);
-					for(int i=0; i<12; i++)
-						nonce[i] = i;
-					m = mbedtls_chacha20_starts(&cxt, nonce, 0);
-					m = mbedtls_chacha20_update(&cxt, msglen, (const unsigned char*)p->message, MSG + 4 + 32);
-					mbedtls_chacha20_free(&cxt);
-				}
-				mbedtls_base64_encode(msgbody+67, output_len, &encoded_len, (const unsigned char*)MSG, (msglen + 4 + 32));
-
-				pfree(MSG);
-
-				MQTT::MQTT_PubMessage(mq, topic, (char*)msgbody, 67 + 9 + 65 + output_len);
-#if 0
-				encoded_len = mbedtls_base64_encode(NULL, 0, &output_len, (unsigned char*)p->message, msglen);
-				encoded_string = (char*)palloc(mempool, output_len + 1);
-				if (encoded_string)
-				{
-					mbedtls_base64_encode((unsigned char*)encoded_string, output_len, &output_len, (unsigned char*)p->message, p->msgLen);
-					MQTT::MQTT_PubMessage(mq, topic, encoded_string, output_len);
-					pfree(encoded_string);
-				}
-#endif
+				MQTT::MQTT_PubMessage(mq, topic, (char*)msgbody, 67 + output_len);
 				InterlockedIncrement(&(p->state)); // we have processed this task.
 
 				pfree(msgbody);
@@ -605,25 +645,76 @@ extern "C"
 	static int connack_result = 0;
 	static bool connack_received = false;
 
-	static int PostMQTTMessage(HWND hWnd, const struct mosquitto_message* message, const mosquitto_property* properties)
+	static int PostMQTTMessage(MQTTSubPrivateData* pd, const struct mosquitto_message* message, const mosquitto_property* properties)
 	{
 		U8* p;
 		U8* msg;
 		size_t len;
 		size_t bytes;
+		HWND hWndUI;
+		MemoryPoolContext mempool;
+
+		assert(pd);
+		assert(pd->hWnd);
+		assert(pd->mempool);
+		hWndUI = pd->hWnd;
+		mempool = (MemoryPoolContext)pd->mempool;
 
 		assert(nullptr != message);
 
 		msg = (U8*)message->payload;
 		assert(nullptr != msg);
+		assert(msg[66] == '|');
 		len = (size_t)message->payloadlen;
 		assert(len > 0);
 
-		if (::IsWindow(hWnd))
+		if (::IsWindow(hWndUI))
 		{
-			///for (size_t i = 0; i < len; i++)
-				///xmsgUTF8GET[i] = msg[i];
-			///::PostMessage(hWnd, WM_MQTT_SUBMSG, (WPARAM)xmsgUTF8GET, (LPARAM)len);
+			MessageTask* mt = (MessageTask*)palloc(mempool, sizeof(MessageTask));
+			if (mt)
+			{
+				size_t output_len = 0;
+				U8 sha256hash[32];
+				U8* p;
+				int m;
+				U8 nonce[12];
+				U8 key[32] = { 0 };
+
+				mt->next = mt->prev = nullptr;
+				mt->state = 0;
+
+				HexString2Raw(msg, 66, mt->pubkey, nullptr);
+				GetKeyFromSKAndPK(g_SK, mt->pubkey, key);
+
+				mbedtls_base64_decode(nullptr, 0, &output_len, msg + 67, len - 67 - 1); // get the bytes after decode
+				p = (U8*)palloc(mempool, output_len);
+				mbedtls_base64_decode(p, output_len, &output_len, msg + 67, len - 67 - 1);
+
+				mbedtls_chacha20_context cxt;
+				mbedtls_chacha20_init(&cxt);
+				m = mbedtls_chacha20_setkey(&cxt, key);
+				for (int i = 0; i < 12; i++) nonce[i] = i;
+				m = mbedtls_chacha20_starts(&cxt, nonce, 0);
+				m = mbedtls_chacha20_update(&cxt, output_len, (const unsigned char*)p, p);  // decrypt the message
+				mbedtls_chacha20_free(&cxt);
+
+				mt->msgLen = *((U32*)p); // get the length
+				{
+					mbedtls_sha256_context sha256_context;
+					mbedtls_sha256_init(&sha256_context);
+					mbedtls_sha256_starts(&sha256_context, 0);
+					mbedtls_sha256_update(&sha256_context, (const unsigned char*)p+36, mt->msgLen);
+					mbedtls_sha256_finish(&sha256_context, sha256hash);
+					m = memcmp(sha256hash, p + 4, 32);
+				}
+
+				mt->message = (wchar_t*)palloc(mempool, mt->msgLen);
+				memcpy(mt->message, p + 36, mt->msgLen);
+				mt->msgLen /= sizeof(wchar_t);
+				pfree(p);
+				if(0 == m && 0 == PushReceiveMessageQueue(mt))
+					::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+			}
 		}
 		return 0;
 	}
@@ -634,15 +725,16 @@ extern "C"
 		int i;
 		bool res;
 		struct mosq_config* pMQTTConf;
-		HWND hWnd;
+		MQTTSubPrivateData* pd;
 
 		UNUSED(properties);
 
 		pMQTTConf = (struct mosq_config*)obj;
 		assert(nullptr != pMQTTConf);
 
-		hWnd = (HWND)(pMQTTConf->userdata);
-		assert(::IsWindow(hWnd));
+		pd = (MQTTSubPrivateData*)(pMQTTConf->userdata);
+		assert(pd);
+		assert(::IsWindow(pd->hWnd));
 
 		if (process_messages == false) return;
 
@@ -673,7 +765,7 @@ extern "C"
 			mosquitto_publish(mosq, &last_mid, message->topic, 0, NULL, 1, true);
 		}
 
-		PostMQTTMessage(hWnd, message, properties);
+		PostMQTTMessage(pd, message, properties);
 
 		if (pMQTTConf->msg_count > 0)
 		{

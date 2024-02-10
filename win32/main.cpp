@@ -35,7 +35,13 @@
 #include "win4.h"
 #include "win5.h"
 
-
+#if _DEBUG
+static const U8* default_private_key = (const U8*)"E3589E51A04EAB9343E2AD073890A1A2C1B172167D486C38045D88C6FD20CBBC";
+static const U8* default_public_key  = (const U8*)"02E3687B2D10B91B81730AA49DAB8BA42BCD25770D2B1C604897DDF2211ACBFE81";
+#else
+static const U8* default_private_key = (const U8*)"59AEA450B4C91512A5CD0465C50786911ED0BC671AF820EDFA163CF7CEA5345C";
+static const U8* default_public_key  = (const U8*)"0288D216B2CEB02171FF4FD3392C2A1AC388F41FBD8392A719F690829F23BCA8E5";
+#endif
 ////////////////////////////////////////////////////////////////
 // global variables
 ////////////////////////////////////////////////////////////////
@@ -204,6 +210,7 @@ public:
 		MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
 		MESSAGE_HANDLER(WM_PAINT, OnPaint)
 		MESSAGE_HANDLER(WM_TIMER, OnTimer)
+		MESSAGE_HANDLER(WM_MQTT_SUBMESSAGE, OnSubMessage)
 		MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
 		MESSAGE_HANDLER(WM_MOUSELEAVE, OnMouseLeave)
@@ -349,8 +356,31 @@ public:
 		return 0;
 	}
 
+	
 	LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		return 0;
+	}
+
+	LRESULT OnSubMessage(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+	{
+		int ret = 0;
+		MQTTSubData* pd = &g_SubData;
+		MessageTask* p;
+
+		EnterCriticalSection(&g_csMQTTSub);
+		p = pd->task;
+		while (p) // scan the link to find the message that has been processed
+		{
+			if (0 == p->state) // this task is not processed yet.
+				ret += m_win4.UpdateReceivedMessage(p);
+			p = p->next;
+		}
+		LeaveCriticalSection(&g_csMQTTSub);
+
+		if (ret)
+			Invalidate();
+
 		return 0;
 	}
 
@@ -636,8 +666,7 @@ public:
 				MessageTask* mt = (MessageTask*)lParam;
 				if (mt)
 				{
-					int ret = m_win4.UpdateMyMessage(mt);
-					if (0 == ret)
+					if (m_win4.UpdateMyMessage(mt))
 						Invalidate();
 				}
 			}
@@ -1231,15 +1260,6 @@ static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 {
 	U8 idx;
 	HRESULT hr = S_OK;
-
-#if 0
-	g_pDWriteFactory = nullptr;
-	hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(&g_pDWriteFactory));
-	if (S_OK != hr || nullptr == g_pDWriteFactory)
-	{
-		return 11;
-	}
-#endif 
 	
 	ATLASSERT(g_pDWriteFactory);
 
@@ -1273,6 +1293,23 @@ static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 		DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL,
 		11.5f,
+		L"en-US",
+		&(g_pTextFormat[idx])
+	);
+
+	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	{
+		return (20 + idx);
+	}
+
+	idx = WT_TEXTFORMAT_GROUPNAME;
+	hr = g_pDWriteFactory->CreateTextFormat(
+		L"Microsoft Yahei",
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		17.f,
 		L"en-US",
 		&(g_pTextFormat[idx])
 	);
@@ -1360,20 +1397,16 @@ static int InitInstance(HINSTANCE hInstance)
 	if (iRet)
 		return iRet;
 
+#if 0
 	iRet = GetKeys(g_AppPath, g_SK, g_PKTo);
 
 	if (iRet)
 		return 5;
-
+#endif
+	HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
+	HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
 	GetPKFromSK(g_SK, g_PK);
 
-#if 0
-	Raw2HexString(g_PK, 33, g_PKText, nullptr);
-	for (int i = 0; i < 66; i++)
-		g_PKTextW[i] = g_PKText[i];
-
-	g_PKTextW[66] = L'\0';
-#endif
 	iRet = MQTT::MQTT_Init();
 
 	if (MOSQ_ERR_SUCCESS != iRet)

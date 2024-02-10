@@ -15,6 +15,12 @@
 
 #define UNUSED(A) (void)(A)
 
+typedef struct
+{
+	void* mempool;
+	HWND hWnd;
+} MQTTSubPrivateData;
+
 typedef struct XMQTTMessage
 {
 	char* host;
@@ -111,7 +117,7 @@ namespace MQTT
 {
 	MQTT_EXPORT int MQTT_Init();
 	MQTT_EXPORT int MQTT_Term();
-	MQTT_EXPORT Mosquitto MQTT_SubInit(HWND hWnd, char* host, int port, MQTT_Methods* callback);
+	MQTT_EXPORT Mosquitto MQTT_SubInit(void* privatedata, char* host, int port, MQTT_Methods* callback);
 	MQTT_EXPORT int MQTT_SubLoop(Mosquitto q, LONG* signal);
 	MQTT_EXPORT int MQTT_SubTerm(Mosquitto q);
 	MQTT_EXPORT int MQTT_AddSubTopic(int type, char* topic);

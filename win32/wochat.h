@@ -36,7 +36,7 @@ extern U8  g_SK[32];
 extern U8  g_PK[33];
 extern U8  g_PKTo[33];
 
-int GetKeys(LPCTSTR path, U8* sk, U8* pk);
+//int GetKeys(LPCTSTR path, U8* sk, U8* pk);
 
 DWORD WINAPI MQTTSubThread(LPVOID lpData);
 DWORD WINAPI MQTTPubThread(LPVOID lpData);
@@ -66,7 +66,7 @@ typedef struct MessageTask
 	LONG state;
 	U8  pubkey[33];
 	wchar_t* message;
-	U16 msgLen;
+	U32 msgLen;
 } MessageTask;
 
 typedef struct MQTTPubData
@@ -131,6 +131,7 @@ int AESEncrypt(U8* input, int length, U8* output);
 int InitWoChatDatabase(LPCWSTR lpszPath);
 
 int PushSendMessageQueue(MessageTask* message_task);
+int PushReceiveMessageQueue(MessageTask* message_task);
 
 int GetPKFromSK(U8* sk, U8* pk);
 int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key);
@@ -138,7 +139,7 @@ int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key);
 int Raw2HexString(U8* input, U8 len, U8* output, U8* outlen);
 int HexString2Raw(U8* input, U8 len, U8* output, U8* outlen);
 int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);
-int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen);
+//int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen);
 
 int GetCurrentPublicKey(void* parent, U8* pk);
 

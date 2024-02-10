@@ -9,6 +9,7 @@
 
 #define XWIN3_BUTTON_DOT            0
 #define XWIN3_LABEL_TITLE           1
+#define XWIN3_LABEL_NAME            2
 
 #define XWIN0_BUTTON_ME             0
 #define XWIN0_BUTTON_TALK           1

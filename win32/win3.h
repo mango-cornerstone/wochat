@@ -46,9 +46,16 @@ public:
 		sh = xctl->getHeight();
 		assert(h > sh);
 		dx = GAP_LEFT3;
-		dy = (h - sh) >> 1;
+		dy = (h - sh) - 3;
 		xctl->setPosition(dx, dy);
 
+		xctl = m_controlArray[XWIN3_LABEL_NAME];
+		assert(nullptr != xctl);
+		sh = xctl->getHeight();
+		assert(dy > sh);
+		dx = GAP_LEFT3;
+		dy = dy - sh - 3;
+		xctl->setPosition(dx, dy);
 	}
 
 private:
@@ -112,7 +119,27 @@ public:
 			lb->setText((wchar_t*)title, 66);
 			m_controlArray[id] = lb;
 		}
-		m_maxControl = 2;
+
+		id = XWIN3_LABEL_NAME;
+		//objSize = sizeof(XLabel);
+		mem = (U8*)palloc(m_pool, objSize);
+		if (NULL != mem)
+		{
+#if _DEBUG
+			wchar_t name[] = { 0x57ce,0x5357,0x5c0f,0x675c};
+#else
+			wchar_t name[] = { 0x6625,0x7533,0x95e8,0x5ba2 };
+#endif
+			XLabel* lb = new(mem)XLabel;
+			assert(nullptr != lb);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			assert(pTextFormat);
+			lb->Init(id, "W3NAME", g_pDWriteFactory, pTextFormat);
+			lb->setText((wchar_t*)name, 4);
+			m_controlArray[id] = lb;
+		}
+
+		m_maxControl = 3;
 	}
 };
 

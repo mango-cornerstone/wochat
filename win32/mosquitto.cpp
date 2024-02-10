@@ -462,7 +462,7 @@ namespace MQTT
 		return MOSQ_ERR_SUCCESS;
 	}
 
-	Mosquitto MQTT_SubInit(HWND hWnd, char* host, int port, MQTT_Methods* callback)
+	Mosquitto MQTT_SubInit(void* privatedata, char* host, int port, MQTT_Methods* callback)
 	{
 		int ret;
 		struct mosquitto* pMOSQ = NULL;
@@ -481,7 +481,7 @@ namespace MQTT
 		}
 
 		xmqtt_client_id_generate(&mqtt_cfg_sub);
-		mqtt_cfg_sub.userdata = hWnd;
+		mqtt_cfg_sub.userdata = privatedata;
 
 		pMOSQ = mosquitto_new(mqtt_cfg_sub.id, mqtt_cfg_sub.clean_session, &mqtt_cfg_sub);
 		if (nullptr == pMOSQ)
