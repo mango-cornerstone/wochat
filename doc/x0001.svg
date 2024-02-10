@@ -1,4 +1,4 @@
-<svg version="1.1" width="600" height="200" xmlns="http://www.w3.org/2000/svg" >
+<svg version="1.1" width="600" height="190" xmlns="http://www.w3.org/2000/svg" >
 <defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" /></marker></defs>
 
 <text x="22" y="60" style="font-size:13px;font-family:'Arial'">02E3687B......FE8D</text>
@@ -30,4 +30,5 @@
 <text x="200" y="135" style="font-size:13px;font-family:'Microsoft Yahei'">32个字节</text>
 <text x="420" y="135" style="font-size:13px;font-family:'Microsoft Yahei'">n个字节</text>
 <text x="410" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">真正的数据</text>
+<text x="62" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">真正数据的长度</text>
 </svg>
