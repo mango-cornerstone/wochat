@@ -203,6 +203,9 @@ public:
         case DUI_LBUTTONDBLCLK:
             r = On_DUI_LBUTTONDBLCLK(msgId, wParam, lParam, lpData);
             break;
+        case DUI_RBUTTONUP:
+            r = On_DUI_RBUTTONUP(msgId, wParam, lParam, lpData);
+            break;
         case DUI_NCLBUTTONDOWN:
             r = On_DUI_NCLBUTTONDOWN(msgId, wParam, lParam, lpData);
             break;
@@ -833,10 +836,51 @@ public:
         return r;
     }
 
+    int Do_DUI_RBUTTONUP(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
+    int On_DUI_RBUTTONUP(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
+    {
+        int r = 0;
+        int dx = -1;
+        int dy = -1;
+        int xPos = GET_X_LPARAM(lParam);
+        int yPos = GET_Y_LPARAM(lParam);
+        XControl* xctl;
+
+        ClearDUIWindowDragMode();
+        m_DragMode = XDragMode::DragNone;
+        m_ptOffsetOld.x = -1, m_ptOffsetOld.y = -1;
+
+        if (XWinPointInRect(xPos, yPos, &m_area))
+        {
+            dx = xPos - m_area.left;
+            dy = yPos - m_area.top;
+        }
+
+        for (int i = 0; i < m_maxControl; i++)
+        {
+            xctl = m_controlArray[i];
+            assert(nullptr != xctl);
+            assert(xctl->m_Id == i);
+            r += xctl->DoMouseRBClickUp(dx, dy, xPos, yPos, m_hWnd);
+        }
+
+        {
+            T* pT = static_cast<T*>(this);
+            r += pT->Do_DUI_RBUTTONUP(uMsg, wParam, lParam, lpData);
+        }
+
+        if (r)
+        {
+            m_status |= DUI_STATUS_NEEDRAW;
+            InvalidateDUIWindow();
+        }
+        return r;
+    }
+
     int Do_DUI_LBUTTONUP(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
     int On_DUI_LBUTTONUP(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
-        int r = DUI_STATUS_NODRAW;
+        int r = 0;
         int dx = -1;
         int dy = -1;
         int idxActive = -1;

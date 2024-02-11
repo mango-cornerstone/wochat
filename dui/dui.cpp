@@ -216,6 +216,40 @@ int XControl::DoMouseLBClickUp(int x, int y, int* idxActive)
     return r;
 }
 
+int XControl::DoMouseRBClickDown(int x, int y, int* idxActive)
+{
+    int r = 0;
+    return r;
+}
+
+int XControl::DoMouseRBClickUp(int x, int y, int absX, int absY, HWND hWnd)
+{
+    int r = 0;
+    U32 status = m_status;
+
+    if (x < 0) // fast path, for the most controls
+        return r;
+
+    // the mousr point is in the inner area. 
+    if ((x >= left1) && (y >= top1) && (x < right1) && (y < bottom1))
+    {
+        if (!(m_property & XCONTROL_PROP_FOCUS))
+            return 0;
+
+        if (XCONTROL_PROP_RBUP & m_property)
+        {
+            POINT pt;
+            HMENU hMenu;
+            GetCursorPos(&pt);
+            hMenu = CreatePopupMenu();
+            AppendMenu(hMenu, MF_STRING | MF_ENABLED, 1000, L"Copy");
+            AppendMenu(hMenu, MF_STRING | MF_ENABLED, 1002, L"Paste");
+            TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON, pt.x, pt.y, 0, hWnd, NULL);
+        }
+    }
+    return r;
+}
+
 int XButton::Draw(int dx, int dy)
 {
     if (nullptr != m_parentBuf)

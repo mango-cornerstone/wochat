@@ -233,7 +233,9 @@ enum XControlProperty
     XCONTROL_PROP_EDITBOX  = 0x00000010,
     XCONTROL_PROP_TEXT     = 0x00000020,
     XCONTROL_PROP_HIDDEN   = 0x00000040,
-    XCONTROL_PROP_FOCUS    = 0x00000080
+    XCONTROL_PROP_FOCUS    = 0x00000080,
+    XCONTROL_PROP_RBDOWN   = 0x00000100,
+    XCONTROL_PROP_RBUP     = 0x00000200
 };
 
 enum XControlState
@@ -298,6 +300,8 @@ public:
     int DoMouseMove(int x, int y, int idxActive);
     int DoMouseLBClickDown(int x, int y, int* idxActive = nullptr);
     int DoMouseLBClickUp(int x, int y, int* idxActive = nullptr);
+    int DoMouseRBClickDown(int x, int y, int* idxActive = nullptr);
+    int DoMouseRBClickUp(int x, int y, int absX, int absY, HWND hWnd);
     int ShowCursor(bool inner = true);
 
     void setRoundColor(U32 c0, U32 c1)
@@ -755,7 +759,7 @@ public:
 
     int OnKeyBoard(U32 msg, U64 wparam = 0, U64 lparam = 0);
     
-    void PasteFromClipboard();
+    int PasteFromClipboard();
     
     int DeleteSelection();
     

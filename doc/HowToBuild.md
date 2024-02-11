@@ -9,7 +9,7 @@
 
 请在上面DOS窗口中执行如下命令：
 ```
-C:\build>cmake -B wt -G "NMake Makefiles" d:\mywork\wochat
+C:\build>cmake -B wt -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release d:\mywork\wochat
 ```
 你会发现CMake帮你创建了一个目录c:\build\wt，切换到这个目录下，执行如下命令：
 ```

@@ -128,6 +128,22 @@ private:
 	}
 
 public:
+	int DoEditBoxPaste()
+	{
+		int r = 0;
+		XEditBox* xeb;
+		xeb = (XEditBox*)m_controlArray[XWIN5_EDITBOX_INPUT];
+		r = xeb->PasteFromClipboard();
+
+		if (r)
+		{
+			m_status |= DUI_STATUS_NEEDRAW;
+			InvalidateDUIWindow();
+		}
+
+		return r;
+	}
+
 	void InitControl()
 	{
 		U8 id;
@@ -336,6 +352,7 @@ public:
 			assert(nullptr != editbox);
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
 			editbox->Init(id, "W5EDITINPUT", g_pDWriteFactory, pTextFormat);
+			editbox->setProperty(XCONTROL_PROP_RBUP);
 			m_controlArray[id] = editbox;
 		}
 		else

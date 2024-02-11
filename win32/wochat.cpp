@@ -8,24 +8,34 @@
 #include "secp256k1_ecdh.h"
 
 
-bool IsHexString(U8* str, U8 len)
+static bool IsPublicKey(U8* str, const U8 len)
 {
 	bool bRet = false;
+
+	if (66 != len)
+		return false;
 
 	if (str)
 	{
 		U8 i, oneChar;
-		for (i = 0; i < len; i++)
+
+		if (str[0] != '0') 
+			return false;
+
+		if ((str[1] == '2') || (str[1] == '3')) // the first two bytes is '02' or '03' for public key
 		{
-			oneChar = str[i];
-			if (oneChar >= '0' && oneChar <= '9')
-				continue;
-			if (oneChar >= 'A' && oneChar <= 'F')
-				continue;
-			break;
+			for (i = 2; i < 66; i++)
+			{
+				oneChar = str[i];
+				if (oneChar >= '0' && oneChar <= '9')
+					continue;
+				if (oneChar >= 'A' && oneChar <= 'F')
+					continue;
+				break;
+			}
+			if (i == len)
+				bRet = true;
 		}
-		if (i == len)
-			bRet = true;
 	}
 	return bRet;
 }
@@ -698,7 +708,7 @@ extern "C"
 		if (msg[len]) // the last byte should be zero
 			return 0;
 
-		if (!IsHexString(msg, 66)) // the first 66 bytes are the public key of the sender
+		if (!IsPublicKey(msg, 66)) // the first 66 bytes are the public key of the sender
 			return 0;
 		
 		if (msg[66] != '|')

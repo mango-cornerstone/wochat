@@ -686,9 +686,13 @@ bool XEditBox::SetSelection(SetSelectionMode moveMode, UINT32 advance, bool exte
 }
 
 // Pastes text from clipboard at current caret position.
-void XEditBox::PasteFromClipboard()
+int XEditBox::PasteFromClipboard()
 {
+    int r = 0;
     UINT32 characterCount = 0;
+
+    if (!(m_property & XCONTROL_PROP_FOCUS))
+        return 0;
 
     DeleteSelection();
 
@@ -700,11 +704,10 @@ void XEditBox::PasteFromClipboard()
             // Get text and size of text.
             size_t byteSize = GlobalSize(hClipboardData);
             void* memory = GlobalLock(hClipboardData); // [byteSize] in bytes
-            const wchar_t* text = reinterpret_cast<const wchar_t*>(memory);
-            characterCount = static_cast<UINT32>(wcsnlen(text, byteSize / sizeof(wchar_t)));
-
             if (memory != NULL)
             {
+                const wchar_t* text = reinterpret_cast<const wchar_t*>(memory);
+                characterCount = static_cast<UINT32>(wcsnlen(text, byteSize / sizeof(wchar_t)));
                 // Insert the text at the current position.
                 m_layoutEditor.InsertTextAt((IDWriteTextLayout**)&m_pTextLayout,
                     m_Text,
@@ -713,6 +716,8 @@ void XEditBox::PasteFromClipboard()
                     characterCount
                 );
                 GlobalUnlock(hClipboardData);
+                if (byteSize > 0)
+                    r++;
             }
         }
         CloseClipboard();
@@ -720,6 +725,7 @@ void XEditBox::PasteFromClipboard()
     
     SetSelection(SetSelectionModeRightChar, characterCount, false);
     //SetSelection(SetSelectionModeRightChar, characterCount, true);
+    return r;
 }
 
 // Copies selected text to clipboard.

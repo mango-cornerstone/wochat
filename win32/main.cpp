@@ -219,6 +219,9 @@ public:
 		MESSAGE_HANDLER(WM_LBUTTONUP, OnLButtonUp)
 		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnLButtonDoubleClick)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
+		COMMAND_ID_HANDLER(IDM_EDITBOX_COPY, OnEditBoxCopy)
+		COMMAND_ID_HANDLER(IDM_EDITBOX_CUT, OnEditBoxCut)
+		COMMAND_ID_HANDLER(IDM_EDITBOX_PASTE, OnEditBoxPaste)
 		MESSAGE_HANDLER(WM_XWINDOWS00, OnWin0Message)
 		MESSAGE_HANDLER(WM_XWINDOWS01, OnWin1Message)
 		MESSAGE_HANDLER(WM_XWINDOWS02, OnWin2Message)
@@ -1069,6 +1072,25 @@ public:
 		EndPaint(&ps);
 		return 0;
 	}
+
+	LRESULT OnEditBoxCopy(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
+	{
+		return 0;
+	}
+
+	LRESULT OnEditBoxCut(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
+	{
+		return 0;
+	}
+
+	LRESULT OnEditBoxPaste(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
+	{
+		int r = m_win5.DoEditBoxPaste();
+		if (r)
+			Invalidate();
+		return 0;
+	}
+
 };
 
 class CWoChatThreadManager
