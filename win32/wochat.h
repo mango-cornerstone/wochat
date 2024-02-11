@@ -142,6 +142,6 @@ int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);
 //int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen);
 
 int GetCurrentPublicKey(void* parent, U8* pk);
-
+bool IsHexString(U8* str, U8 len);
 
 #endif // __WT_WOCHAT_H__

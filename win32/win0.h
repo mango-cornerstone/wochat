@@ -48,8 +48,11 @@ private:
 
 		int w = 48;
 		int h = 48;
+#if _DEBUG
 		id = XWIN0_BITMAP_ME;        bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpMe;        bmp->w = w; bmp->h = h;
-
+#else
+		id = XWIN0_BITMAP_ME;        bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpZ;        bmp->w = w; bmp->h = h;
+#endif
 		w = 32; h = 32;
 		id = XWIN0_BITMAP_TALKN;     bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpTalkN;     bmp->w = w; bmp->h = h;
 		id = XWIN0_BITMAP_TALKH;     bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpTalkH;     bmp->w = w; bmp->h = h;

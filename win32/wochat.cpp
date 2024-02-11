@@ -7,6 +7,29 @@
 #include "secp256k1.h"
 #include "secp256k1_ecdh.h"
 
+
+bool IsHexString(U8* str, U8 len)
+{
+	bool bRet = false;
+
+	if (str)
+	{
+		U8 i, oneChar;
+		for (i = 0; i < len; i++)
+		{
+			oneChar = str[i];
+			if (oneChar >= '0' && oneChar <= '9')
+				continue;
+			if (oneChar >= 'A' && oneChar <= 'F')
+				continue;
+			break;
+		}
+		if (i == len)
+			bRet = true;
+	}
+	return bRet;
+}
+
 int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key)
 {
 	int ret = 1;
@@ -647,50 +670,59 @@ extern "C"
 
 	static int PostMQTTMessage(MQTTSubPrivateData* pd, const struct mosquitto_message* message, const mosquitto_property* properties)
 	{
-		U8* p;
 		U8* msg;
 		size_t len;
-		size_t bytes;
 		HWND hWndUI;
 		MemoryPoolContext mempool;
+		MessageTask* mt;
 
-		assert(pd);
-		assert(pd->hWnd);
-		assert(pd->mempool);
+		// do some check here
+		if (nullptr == message)
+			return 0;
+		if (nullptr == pd)
+			return 0;
 		hWndUI = pd->hWnd;
 		mempool = (MemoryPoolContext)pd->mempool;
-
-		assert(nullptr != message);
+		if (!(::IsWindow(hWndUI)))
+			return 0;
+		if (nullptr == mempool)
+			return 0;
 
 		msg = (U8*)message->payload;
-		assert(nullptr != msg);
-		assert(msg[66] == '|');
+		if (nullptr == msg)
+			return 0;
 		len = (size_t)message->payloadlen;
-		assert(len > 0);
+		if (len < 120) // 67 + base64(4 + 32 + 2) + '\0'
+			return 0;
 
-		if (::IsWindow(hWndUI))
+		if (msg[len]) // the last byte should be zero
+			return 0;
+
+		if (!IsHexString(msg, 66)) // the first 66 bytes are the public key of the sender
+			return 0;
+		
+		if (msg[66] != '|')
+			return 0;
+
+		mt = (MessageTask*)palloc0(mempool, sizeof(MessageTask));
+		if (mt)
 		{
-			MessageTask* mt = (MessageTask*)palloc(mempool, sizeof(MessageTask));
-			if (mt)
+			size_t output_len = 0;
+			mbedtls_base64_decode(nullptr, 0, &output_len, msg + 67, len - 67 - 1); // get the bytes after decode, the last byte is 0
+			U8* p = (U8*)palloc(mempool, output_len);
+			if (p)
 			{
-				size_t output_len = 0;
-				U8 sha256hash[32];
-				U8* p;
 				int m;
+				U8 sha256hash[32];
 				U8 nonce[12];
 				U8 key[32] = { 0 };
-
-				mt->next = mt->prev = nullptr;
-				mt->state = 0;
+				mbedtls_chacha20_context cxt;
+				mbedtls_sha256_context sha256_context;
 
 				HexString2Raw(msg, 66, mt->pubkey, nullptr);
 				GetKeyFromSKAndPK(g_SK, mt->pubkey, key);
-
-				mbedtls_base64_decode(nullptr, 0, &output_len, msg + 67, len - 67 - 1); // get the bytes after decode
-				p = (U8*)palloc(mempool, output_len);
 				mbedtls_base64_decode(p, output_len, &output_len, msg + 67, len - 67 - 1);
 
-				mbedtls_chacha20_context cxt;
 				mbedtls_chacha20_init(&cxt);
 				m = mbedtls_chacha20_setkey(&cxt, key);
 				for (int i = 0; i < 12; i++) nonce[i] = i;
@@ -699,26 +731,45 @@ extern "C"
 				mbedtls_chacha20_free(&cxt);
 
 				mt->msgLen = *((U32*)p); // get the length
+				if (mt->msgLen != output_len - 4 - 32)
 				{
-					mbedtls_sha256_context sha256_context;
-					mbedtls_sha256_init(&sha256_context);
-					mbedtls_sha256_starts(&sha256_context, 0);
-					mbedtls_sha256_update(&sha256_context, (const unsigned char*)p+36, mt->msgLen);
-					mbedtls_sha256_finish(&sha256_context, sha256hash);
-					m = memcmp(sha256hash, p + 4, 32);
+					pfree(p);
+					pfree(mt);
+					return 0;
+				}
+					
+				mbedtls_sha256_init(&sha256_context);
+				mbedtls_sha256_starts(&sha256_context, 0);
+				mbedtls_sha256_update(&sha256_context, (const unsigned char*)p + 4 + 32, output_len - 4 - 32);
+				mbedtls_sha256_finish(&sha256_context, sha256hash);
+				if(memcmp(sha256hash, p + 4, 32)) // compare the hash value
+				{
+					pfree(p);
+					pfree(mt);
+					return 0;
 				}
 
 				mt->message = (wchar_t*)palloc(mempool, mt->msgLen);
 				memcpy(mt->message, p + 36, mt->msgLen);
 				mt->msgLen /= sizeof(wchar_t);
 				pfree(p);
-				if(0 == m && 0 == PushReceiveMessageQueue(mt))
-					::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+				if (PushReceiveMessageQueue(mt))
+				{
+					pfree(mt->message);
+					pfree(mt);
+					return 0;
+				}
+
+				::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+			}
+			else
+			{
+				pfree(mt);
 			}
 		}
+
 		return 0;
 	}
-
 
 	static void MQTT_Message_Callback(struct mosquitto* mosq, void* obj, const struct mosquitto_message* message, const mosquitto_property* properties)
 	{

@@ -128,14 +128,14 @@ public:
 #if _DEBUG
 			wchar_t name[] = { 0x57ce,0x5357,0x5c0f,0x675c};
 #else
-			wchar_t name[] = { 0x6625,0x7533,0x95e8,0x5ba2 };
+			wchar_t name[] = { 0x6625,0x7533,0x95e8,0x4e0b,0x5ba2 };
 #endif
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(id, "W3NAME", g_pDWriteFactory, pTextFormat);
-			lb->setText((wchar_t*)name, 4);
+			lb->setText((wchar_t*)name, sizeof(name)/sizeof(name[0]));
 			m_controlArray[id] = lb;
 		}
 
