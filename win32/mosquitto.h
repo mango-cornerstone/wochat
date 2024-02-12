@@ -7,6 +7,8 @@
 #include <time.h>
 #include "mosquitto/include/mosquitto.h"
 #include "mosquitto/include/mqtt_protocol.h"
+#include "dui/dui.h"
+#include "dui/dui_mempool.h"
 
 #define CLIENT_PUB 1
 #define CLIENT_SUB 2
@@ -15,11 +17,15 @@
 
 #define UNUSED(A) (void)(A)
 
-typedef struct
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct MQTTPrivateData
 {
 	void* mempool;
 	HWND hWnd;
-} MQTTSubPrivateData;
+} MQTTPrivateData;
 
 typedef struct XMQTTMessage
 {
@@ -100,8 +106,6 @@ struct mosq_config
 	void* userdata;
 };
 
-typedef struct mosquitto* Mosquitto;
-
 typedef struct MQTT_Methods
 {
 	void (*message_callback)(struct mosquitto*, void*, const struct mosquitto_message*, const mosquitto_property*);
@@ -112,17 +116,22 @@ typedef struct MQTT_Methods
 	void (*log_callback)(struct mosquitto*, void*, int, const char*);
 } MQTT_Methods;
 
+#ifdef __cplusplus
+}
+#endif
+
+typedef struct mosquitto* Mosquitto;
 
 namespace MQTT
 {
 	MQTT_EXPORT int MQTT_Init();
 	MQTT_EXPORT int MQTT_Term();
-	MQTT_EXPORT Mosquitto MQTT_SubInit(void* privatedata, char* host, int port, MQTT_Methods* callback);
+	MQTT_EXPORT Mosquitto MQTT_SubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback);
 	MQTT_EXPORT int MQTT_SubLoop(Mosquitto q, LONG* signal);
 	MQTT_EXPORT int MQTT_SubTerm(Mosquitto q);
-	MQTT_EXPORT int MQTT_AddSubTopic(int type, char* topic);
+	MQTT_EXPORT int MQTT_AddSubTopic(MemoryPoolContext mempool, int type, char* topic);
 
-	MQTT_EXPORT Mosquitto MQTT_PubInit(HWND hWnd, char* host, int port, MQTT_Methods* callback);
+	MQTT_EXPORT Mosquitto MQTT_PubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback);
 	MQTT_EXPORT int MQTT_PubMessage(Mosquitto q, char* topic, char* message, int msglen);
 	MQTT_EXPORT int MQTT_PubTerm(Mosquitto q);
 
@@ -164,6 +173,7 @@ namespace MQTT
 		const struct libmosquitto_will* will = NULL,
 		const struct libmosquitto_tls* tls = NULL);
 
+#if 0
 	/*
 	 * Class: XMqtt
 	 *
@@ -225,7 +235,7 @@ namespace MQTT
 		virtual void on_log(int /*level*/, const char* /*str*/) { return; }
 		virtual void on_error() { return; }
 	};
-
+#endif
 }
 
 #endif // _WT_MOSQUITTO_H_

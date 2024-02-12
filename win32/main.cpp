@@ -287,13 +287,14 @@ public:
 
 		// we create two threads. One thread for the MQTT subscription, and one for publication.
 		hThread0 = ::CreateThread(NULL, 0, MQTTSubThread, m_hWnd, 0, &dwThreadID0);
+#if 10
 		hThread1 = ::CreateThread(NULL, 0, MQTTPubThread, m_hWnd, 0, &dwThreadID1);
 
 		if (nullptr == hThread0 || nullptr == hThread1)
 		{
 			MessageBox(TEXT("MQTT thread creation is failed!"), TEXT("WoChat Error"), MB_OK);
 		}
-
+#endif
 		{
 			XChatGroup* cg = m_win2.GetSelectedChatGroup();
 			if (cg)
@@ -1419,12 +1420,6 @@ static int InitInstance(HINSTANCE hInstance)
 	if (iRet)
 		return iRet;
 
-#if 0
-	iRet = GetKeys(g_AppPath, g_SK, g_PKTo);
-
-	if (iRet)
-		return 5;
-#endif
 	HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
 	HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
 	GetPKFromSK(g_SK, g_PK);
@@ -1615,7 +1610,6 @@ ExitThisApplication:
 
 	return 0;
 }
-
 
 int GetCurrentPublicKey(void* parent, U8* pk)
 {

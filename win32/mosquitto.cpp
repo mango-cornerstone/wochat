@@ -1,7 +1,5 @@
 #include "pch.h"
 #include "mosquitto.h"
-#include "dui/dui.h"
-#include "dui/dui_mempool.h"
 
 #include <cassert>
 
@@ -16,242 +14,258 @@
 #define PORT_UNDEFINED		-1
 #define PORT_UNIX			0
 
-#define MQTT_MAX_TOPICS		512
+#define MQTT_MAX_TOPICS		1024
 
 static mosq_config mqtt_cfg_pub;
 static mosq_config mqtt_cfg_sub;
 
-static MemoryPoolContext mqtt_mempool = nullptr;
-
-static int xmqtt_init_config(struct mosq_config* cfg, int pub_or_sub, int max_topics)
+static int xmqtt_init_config(MemoryPoolContext mempool, struct mosq_config* cfg, int pub_or_sub, int max_topics)
 {
-	assert(nullptr != cfg);
+	int r = MOSQ_ERR_ERRNO;
 
-	memset(cfg, 0, sizeof(*cfg));
-	cfg->retain = 1;
-	cfg->port = PORT_UNDEFINED;
-	cfg->max_inflight = 20;
-	cfg->keepalive = 60;
-	cfg->clean_session = true;
-	cfg->eol = true;
-	cfg->repeat_count = 1;
-	cfg->repeat_delay.tv_sec = 0;
-	cfg->repeat_delay.tv_usec = 0;
-	cfg->random_filter = 10000;
-	if (pub_or_sub == CLIENT_RR)
+	if (mempool && cfg)
 	{
-		cfg->protocol_version = MQTT_PROTOCOL_V5;
+		memset(cfg, 0, sizeof(struct mosq_config));
+		cfg->port = PORT_UNDEFINED;
+		cfg->max_inflight = 20;
+		cfg->keepalive = 60;
+		cfg->clean_session = true;
+		cfg->qos = 1;
+		cfg->eol = true;
+		cfg->repeat_count = 1;
+		cfg->repeat_delay.tv_sec = 0;
+		cfg->repeat_delay.tv_usec = 0;
+		cfg->random_filter = 10000;
+#if 0
+		if (pub_or_sub == CLIENT_RR)
+		{
+			cfg->protocol_version = MQTT_PROTOCOL_V5;
+			cfg->msg_count = 1;
+		}
+		else {
+			cfg->protocol_version = MQTT_PROTOCOL_V311;
+		}
+#endif 
+		cfg->protocol_version = MQTT_PROTOCOL_V5;  /* we use V5 as the default protocal */
 		cfg->msg_count = 1;
-	}
-	else {
-		cfg->protocol_version = MQTT_PROTOCOL_V311;
-	}
-	cfg->session_expiry_interval = -1; /* -1 means unset here, the user can't set it to -1. */
+		cfg->session_expiry_interval = -1; /* -1 means unset here, the user can't set it to -1. */
 
-	cfg->maxtopics = max_topics;
-	if (max_topics < 1)
-		cfg->maxtopics = 1;
-	if (max_topics > MQTT_MAX_TOPICS)
-		cfg->maxtopics = MQTT_MAX_TOPICS;
+		cfg->maxtopics = max_topics;
+		if (max_topics < 1)
+			cfg->maxtopics = 1;
+		if (max_topics > MQTT_MAX_TOPICS)
+			cfg->maxtopics = MQTT_MAX_TOPICS;
 
-	cfg->topics = (char**)palloc(mqtt_mempool, ((cfg->maxtopics) * sizeof(char*)));
-	if (nullptr == cfg->topics)
-	{
-		return MOSQ_ERR_NOMEM;
+		cfg->topics = (char**)palloc(mempool, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
+		if (cfg->topics)
+			r = MOSQ_ERR_SUCCESS;
+		else
+			r = MOSQ_ERR_NOMEM;
 	}
 
-	return MOSQ_ERR_SUCCESS;
+	return r;
 }
 
-static int xmqtt_cfg_add_topic(struct mosq_config* cfg, int type, char* topic, const char* arg)
+static int xmqtt_cfg_add_topic(MemoryPoolContext mempool, struct mosq_config* cfg, int type, char* topic, const char* arg)
 {
-	if (mosquitto_validate_utf8(topic, (int)strlen(topic)))
+	int r = MOSQ_ERR_ERRNO;
+
+	if (mempool)
 	{
-		//fprintf(stderr, "Error: Malformed UTF-8 in %s argument.\n\n", arg);
-		return 1;
-	}
-	if (type == CLIENT_PUB || type == CLIENT_RR)
-	{
-		if (mosquitto_pub_topic_check(topic) == MOSQ_ERR_INVAL)
-		{
-			//fprintf(stderr, "Error: Invalid publish topic '%s', does it contain '+' or '#'?\n", topic);
+		char* tp = pstrdup(mempool, topic);
+		if (!tp)
 			return 1;
-		}
-		cfg->topic = topic;
-	}
-	else if (type == CLIENT_RESPONSE_TOPIC)
-	{
-		if (mosquitto_pub_topic_check(topic) == MOSQ_ERR_INVAL)
+
+		if (mosquitto_validate_utf8(topic, (int)strlen(topic)))
 		{
-			//fprintf(stderr, "Error: Invalid response topic '%s', does it contain '+' or '#'?\n", topic);
-			return 1;
+			//fprintf(stderr, "Error: Malformed UTF-8 in %s argument.\n\n", arg);
+			return 2;
 		}
-		cfg->response_topic = topic;
-	}
-	else
-	{
-		if (mosquitto_sub_topic_check(topic) == MOSQ_ERR_INVAL)
+		if (type == CLIENT_PUB || type == CLIENT_RR)
 		{
-			//fprintf(stderr, "Error: Invalid subscription topic '%s', are all '+' and '#' wildcards correct?\n", topic);
-			return 1;
-		}
-		if (cfg->topic_count >= MQTT_MAX_TOPICS)
-		{
-			// we reached the maximum topics
-			return 1;
-		}
-		cfg->topic_count++;
-		cfg->topics[cfg->topic_count - 1] = topic;
-	}
-
-	return MOSQ_ERR_SUCCESS;
-}
-
-static int xmqtt_client_set_config(struct mosq_config* cfg, int pub_or_sub, char* host, int port, char* topic, int max_topic)
-{
-	int rc;
-	FILE* fptr;
-	char line[1024];
-	int count;
-	char* loc = NULL;
-	size_t len;
-
-	assert(cfg);
-	assert(host);
-	assert(topic);
-
-	rc = xmqtt_init_config(cfg, pub_or_sub, max_topic);
-	if (MOSQ_ERR_SUCCESS != rc)
-	{
-		return 1;
-	}
-
-	rc = xmqtt_cfg_add_topic(cfg, pub_or_sub, topic, nullptr);
-	if (MOSQ_ERR_SUCCESS != rc)
-	{
-		return 1;
-	}
-
-	cfg->host = host;
-	cfg->port = port;
-
-	/* Deal with real argc/argv */
-	if (cfg->will_payload && !cfg->will_topic)
-	{
-		//fprintf(stderr, "Error: Will payload given, but no will topic given.\n");
-		return 1;
-	}
-	if (cfg->will_retain && !cfg->will_topic)
-	{
-		//fprintf(stderr, "Error: Will retain given, but no will topic given.\n");
-		return 1;
-	}
-
-	if (cfg->protocol_version == 5)
-	{
-		if (cfg->clean_session == false && cfg->session_expiry_interval == -1)
-		{
-			/* User hasn't set session-expiry-interval, but has cleared clean
-				session so default to persistent session. */
-			cfg->session_expiry_interval = UINT32_MAX;
-		}
-		if (cfg->session_expiry_interval > 0)
-		{
-			if (cfg->session_expiry_interval == UINT32_MAX && (cfg->id_prefix || !cfg->id))
+			if (mosquitto_pub_topic_check(topic) == MOSQ_ERR_INVAL)
 			{
-				//fprintf(stderr, "Error: You must provide a client id if you are using an infinite session expiry interval.\n");
+				//fprintf(stderr, "Error: Invalid publish topic '%s', does it contain '+' or '#'?\n", topic);
+				return 3;
+			}
+			cfg->topic = tp;
+		}
+		else if (type == CLIENT_RESPONSE_TOPIC)
+		{
+			if (mosquitto_pub_topic_check(topic) == MOSQ_ERR_INVAL)
+			{
+				//fprintf(stderr, "Error: Invalid response topic '%s', does it contain '+' or '#'?\n", topic);
 				return 1;
 			}
-			rc = mosquitto_property_add_int32(&cfg->connect_props, MQTT_PROP_SESSION_EXPIRY_INTERVAL, (uint32_t)cfg->session_expiry_interval);
-			if (rc)
+			cfg->response_topic = tp;
+		}
+		else
+		{
+			if (mosquitto_sub_topic_check(topic) == MOSQ_ERR_INVAL)
 			{
-				//fprintf(stderr, "Error adding property session-expiry-interval\n");
+				//fprintf(stderr, "Error: Invalid subscription topic '%s', are all '+' and '#' wildcards correct?\n", topic);
+				return 1;
 			}
+			if (cfg->topic_count >= MQTT_MAX_TOPICS)
+			{
+				// we reached the maximum topics
+				return 1;
+			}
+			cfg->topic_count++;
+			cfg->topics[cfg->topic_count - 1] = tp;
 		}
-	}
-	else
-	{
-		if (cfg->clean_session == false && (cfg->id_prefix || !cfg->id))
-		{
-			//fprintf(stderr, "Error: You must provide a client id if you are using the -c option.\n");
-			return 1;
-		}
+		r = MOSQ_ERR_SUCCESS;
 	}
 
-	if (pub_or_sub == CLIENT_SUB)
-	{
-		if (cfg->topic_count == 0)
-		{
-			//fprintf(stderr, "Error: You must specify a topic to subscribe to.\n");
-			return 1;
-		}
-	}
-
-	if (!cfg->host)
-	{
-		cfg->host = (char*)"im.wochat.org";
-		if (!cfg->host)
-		{
-			//err_printf(cfg, "Error: Out of memory.\n");
-			return 1;
-		}
-	}
-
-	rc = mosquitto_property_check_all(CMD_CONNECT, cfg->connect_props);
-	if (rc)
-	{
-		//err_printf(cfg, "Error in CONNECT properties: %s\n", mosquitto_strerror(rc));
-		return 1;
-	}
-	rc = mosquitto_property_check_all(CMD_PUBLISH, cfg->publish_props);
-	if (rc)
-	{
-		//err_printf(cfg, "Error in PUBLISH properties: %s\n", mosquitto_strerror(rc));
-		return 1;
-	}
-	rc = mosquitto_property_check_all(CMD_SUBSCRIBE, cfg->subscribe_props);
-	if (rc)
-	{
-		//err_printf(cfg, "Error in SUBSCRIBE properties: %s\n", mosquitto_strerror(rc));
-		return 1;
-	}
-	rc = mosquitto_property_check_all(CMD_UNSUBSCRIBE, cfg->unsubscribe_props);
-	if (rc)
-	{
-		//err_printf(cfg, "Error in UNSUBSCRIBE properties: %s\n", mosquitto_strerror(rc));
-		return 1;
-	}
-	rc = mosquitto_property_check_all(CMD_DISCONNECT, cfg->disconnect_props);
-	if (rc)
-	{
-		//err_printf(cfg, "Error in DISCONNECT properties: %s\n", mosquitto_strerror(rc));
-		return 1;
-	}
-	rc = mosquitto_property_check_all(CMD_WILL, cfg->will_props);
-	if (rc)
-	{
-		//err_printf(cfg, "Error in Will properties: %s\n", mosquitto_strerror(rc));
-		return 1;
-	}
-
-	return MOSQ_ERR_SUCCESS;
+	return r;
 }
 
-static int xmqtt_client_id_generate(struct mosq_config* cfg)
+static int xmqtt_client_set_config(MemoryPoolContext mempool, struct mosq_config* cfg, int pub_or_sub, char* host, int port, char* topic, int max_topic)
 {
-	if (cfg->id_prefix)
+	int r = MOSQ_ERR_ERRNO;
+
+	if (mempool && cfg && host && topic)
 	{
-		//cfg->id = malloc(strlen(cfg->id_prefix) + 10);
-		cfg->id = (char*)"wochatclientxxxx";
-		if (!cfg->id)
+		int rc;
+		rc = xmqtt_init_config(mempool, cfg, pub_or_sub, max_topic);
+		if (MOSQ_ERR_SUCCESS != rc)
+			return 1;
+
+		rc = xmqtt_cfg_add_topic(mempool, cfg, pub_or_sub, topic, nullptr);
+		if (MOSQ_ERR_SUCCESS != rc)
+			return 2;
+
+		cfg->host = host;
+		cfg->port = port;
+
+		/* Deal with real argc/argv */
+		if (cfg->will_payload && !cfg->will_topic)
 		{
-			//err_printf(cfg, "Error: Out of memory.\n");
-			//mosquitto_lib_cleanup();
+			//fprintf(stderr, "Error: Will payload given, but no will topic given.\n");
+			return 3;
+		}
+		if (cfg->will_retain && !cfg->will_topic)
+		{
+			//fprintf(stderr, "Error: Will retain given, but no will topic given.\n");
+			return 4;
+		}
+
+		if (cfg->protocol_version == 5)
+		{
+			if (cfg->clean_session == false && cfg->session_expiry_interval == -1)
+			{
+				/* User hasn't set session-expiry-interval, but has cleared clean
+					session so default to persistent session. */
+				cfg->session_expiry_interval = UINT32_MAX;
+			}
+			if (cfg->session_expiry_interval > 0)
+			{
+				if (cfg->session_expiry_interval == UINT32_MAX && (cfg->id_prefix || !cfg->id))
+				{
+					//fprintf(stderr, "Error: You must provide a client id if you are using an infinite session expiry interval.\n");
+					return 5;
+				}
+				rc = mosquitto_property_add_int32(&cfg->connect_props, MQTT_PROP_SESSION_EXPIRY_INTERVAL, (uint32_t)cfg->session_expiry_interval);
+				if (rc)
+				{
+					//fprintf(stderr, "Error adding property session-expiry-interval\n");
+				}
+			}
+		}
+		else
+		{
+			if (cfg->clean_session == false && (cfg->id_prefix || !cfg->id))
+			{
+				//fprintf(stderr, "Error: You must provide a client id if you are using the -c option.\n");
+				return 6;
+			}
+		}
+
+		if (pub_or_sub == CLIENT_SUB)
+		{
+			if (cfg->topic_count == 0)
+			{
+				//fprintf(stderr, "Error: You must specify a topic to subscribe to.\n");
+				return 7;
+			}
+		}
+
+		if (!cfg->host)
+		{
+			cfg->host = (char*)"www.boobooke.com";
+		}
+
+		rc = mosquitto_property_check_all(CMD_CONNECT, cfg->connect_props);
+		if (rc)
+		{
+			//err_printf(cfg, "Error in CONNECT properties: %s\n", mosquitto_strerror(rc));
 			return 1;
 		}
-		//snprintf(cfg->id, strlen(cfg->id_prefix) + 10, "%s%d", cfg->id_prefix, getpid());
+		rc = mosquitto_property_check_all(CMD_PUBLISH, cfg->publish_props);
+		if (rc)
+		{
+			//err_printf(cfg, "Error in PUBLISH properties: %s\n", mosquitto_strerror(rc));
+			return 1;
+		}
+		rc = mosquitto_property_check_all(CMD_SUBSCRIBE, cfg->subscribe_props);
+		if (rc)
+		{
+			//err_printf(cfg, "Error in SUBSCRIBE properties: %s\n", mosquitto_strerror(rc));
+			return 1;
+		}
+		rc = mosquitto_property_check_all(CMD_UNSUBSCRIBE, cfg->unsubscribe_props);
+		if (rc)
+		{
+			//err_printf(cfg, "Error in UNSUBSCRIBE properties: %s\n", mosquitto_strerror(rc));
+			return 1;
+		}
+		rc = mosquitto_property_check_all(CMD_DISCONNECT, cfg->disconnect_props);
+		if (rc)
+		{
+			//err_printf(cfg, "Error in DISCONNECT properties: %s\n", mosquitto_strerror(rc));
+			return 1;
+		}
+		rc = mosquitto_property_check_all(CMD_WILL, cfg->will_props);
+		if (rc)
+		{
+			//err_printf(cfg, "Error in Will properties: %s\n", mosquitto_strerror(rc));
+			return 1;
+		}
+		r = MOSQ_ERR_SUCCESS;
 	}
-	return MOSQ_ERR_SUCCESS;
+
+	return r;
+}
+
+// generate a random 22 bytes as the client id because MQTT only allow maxium 23 bytes as the client id
+static int xmqtt_client_id_generate(MemoryPoolContext mempool, struct mosq_config* cfg)
+{
+	int r = MOSQ_ERR_ERRNO;
+	NTSTATUS status;
+	U8 randomize[11] = { 0 };
+
+	status = BCryptGenRandom(NULL, randomize, 11, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+
+	if (STATUS_SUCCESS == status)
+	{
+		cfg->id = (char*)palloc(mempool, 23);
+		if (cfg->id)
+		{
+			U8 i, idx;
+			const U8* hex_chars = (const U8*)"0123456789ABCDEF";
+			for (i = 0; i < 11; i++)
+			{
+				idx = ((randomize[i] >> 4) & 0x0F);
+				cfg->id[(i << 1)] = hex_chars[idx];
+
+				idx = (randomize[i] & 0x0F);
+				cfg->id[(i << 1) + 1] = hex_chars[idx];
+			}
+			cfg->id[22] = '\0';
+			r = MOSQ_ERR_SUCCESS;
+		}
+	}
+	return r;
 }
 
 static int xmqtt_client_opts_set(struct mosquitto* mosq, struct mosq_config* cfg)
@@ -352,80 +366,21 @@ static int xmqtt_client_connect(struct mosquitto* mosq, struct mosq_config* cfg)
 	return MOSQ_ERR_SUCCESS;
 }
 
-#if 0
-static void xmqtt_client_config_cleanup(struct mosq_config* cfg)
-{
-	int i;
-	free(cfg->id);
-	free(cfg->id_prefix);
-	free(cfg->host);
-	free(cfg->file_input);
-	free(cfg->message);
-	free(cfg->topic);
-	free(cfg->bind_address);
-	free(cfg->username);
-	free(cfg->password);
-	free(cfg->will_topic);
-	free(cfg->will_payload);
-	free(cfg->format);
-	free(cfg->response_topic);
-
-	if (cfg->topics) {
-		for (i = 0; i < cfg->topic_count; i++) {
-			free(cfg->topics[i]);
-		}
-		free(cfg->topics);
-	}
-	if (cfg->filter_outs) {
-		for (i = 0; i < cfg->filter_out_count; i++) {
-			free(cfg->filter_outs[i]);
-		}
-		free(cfg->filter_outs);
-	}
-	if (cfg->unsub_topics) {
-		for (i = 0; i < cfg->unsub_topic_count; i++) {
-			free(cfg->unsub_topics[i]);
-		}
-		free(cfg->unsub_topics);
-	}
-#ifdef WITH_SOCKS
-	free(cfg->socks5_host);
-	free(cfg->socks5_username);
-	free(cfg->socks5_password);
-#endif
-	mosquitto_property_free_all(&cfg->connect_props);
-	mosquitto_property_free_all(&cfg->publish_props);
-	mosquitto_property_free_all(&cfg->subscribe_props);
-	mosquitto_property_free_all(&cfg->unsubscribe_props);
-	mosquitto_property_free_all(&cfg->disconnect_props);
-	mosquitto_property_free_all(&cfg->will_props);
-}
-#endif
-
 namespace MQTT
 {
 	int MQTT_Init()
 	{
-		U32 initSize = DUI_ALLOCSET_DEFAULT_INITSIZE;
-		U32 maxSize = DUI_ALLOCSET_DEFAULT_MAXSIZE;
-
-		mqtt_mempool = mempool_create("DUI_WIN", 0, initSize, maxSize);
-		if (nullptr == mqtt_mempool)
-			return (-1);
-
 		return mosquitto_lib_init();
 	}
 
 	int MQTT_Term()
 	{
-		mempool_destroy(mqtt_mempool);
-
 		return mosquitto_lib_cleanup();
 	}
 
-	int MQTT_AddSubTopic(int type, char* topic)
+	int MQTT_AddSubTopic(MemoryPoolContext mempool, int type, char* topic)
 	{
-		int ret = xmqtt_cfg_add_topic(&mqtt_cfg_sub, type, topic, NULL);
+		int ret = xmqtt_cfg_add_topic(mempool, &mqtt_cfg_sub, type, topic, NULL);
 		return ret;
 	}
 
@@ -462,15 +417,17 @@ namespace MQTT
 		return MOSQ_ERR_SUCCESS;
 	}
 
-	Mosquitto MQTT_SubInit(void* privatedata, char* host, int port, MQTT_Methods* callback)
+	Mosquitto MQTT_SubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback)
 	{
 		int ret;
 		struct mosquitto* pMOSQ = NULL;
 
+		assert(privatedata);
+
 		MQTT_Methods* m = callback;
 		assert(nullptr != m);
 
-		ret = xmqtt_client_set_config(&mqtt_cfg_sub, CLIENT_SUB, host, port, (char*)"WOCHAT", MQTT_MAX_TOPICS);
+		ret = xmqtt_client_set_config(privatedata->mempool, &mqtt_cfg_sub, CLIENT_SUB, host, port, (char*)"WOCHAT", MQTT_MAX_TOPICS);
 		if (MOSQ_ERR_SUCCESS != ret)
 			return nullptr;
 
@@ -480,7 +437,7 @@ namespace MQTT
 			return nullptr;
 		}
 
-		xmqtt_client_id_generate(&mqtt_cfg_sub);
+		xmqtt_client_id_generate(privatedata->mempool, &mqtt_cfg_sub);
 		mqtt_cfg_sub.userdata = privatedata;
 
 		pMOSQ = mosquitto_new(mqtt_cfg_sub.id, mqtt_cfg_sub.clean_session, &mqtt_cfg_sub);
@@ -508,20 +465,22 @@ namespace MQTT
 		return pMOSQ;
 	}
 
-	Mosquitto MQTT_PubInit(HWND hWnd, char* host, int port, MQTT_Methods* callback)
+	Mosquitto MQTT_PubInit(MQTTPrivateData* pd, char* host, int port, MQTT_Methods* callback)
 	{
 		int ret;
 		struct mosquitto* pMOSQ = NULL;
 
+		assert(pd);
+
 		MQTT_Methods* m = callback;
 		assert(nullptr != m);
 
-		ret = xmqtt_client_set_config(&mqtt_cfg_pub, CLIENT_PUB, host, port, (char*)"WOCHAT", 1);
+		ret = xmqtt_client_set_config(pd->mempool, &mqtt_cfg_pub, CLIENT_PUB, host, port, (char*)"WOCHAT", 1);
 		if (MOSQ_ERR_SUCCESS != ret)
 			return nullptr;
 
-		xmqtt_client_id_generate(&mqtt_cfg_pub);
-		mqtt_cfg_pub.userdata = hWnd;
+		xmqtt_client_id_generate(pd->mempool, &mqtt_cfg_pub);
+		mqtt_cfg_pub.userdata = pd;
 
 		pMOSQ = mosquitto_new(mqtt_cfg_pub.id, mqtt_cfg_pub.clean_session, &mqtt_cfg_pub);
 		if (nullptr == pMOSQ)
@@ -577,6 +536,7 @@ namespace MQTT
 		return MOSQ_ERR_SUCCESS;
 	}
 
+#if 0
 	static void on_connect_wrapper(struct mosquitto* mosq, void* userdata, int rc)
 	{
 		class XMqtt* m = (class XMqtt*)userdata;
@@ -635,7 +595,7 @@ namespace MQTT
 		UNUSED(mosq);
 		m->on_log(level, str);
 	}
-
+#endif
 	int lib_version(int* major, int* minor, int* revision)
 	{
 		if (major) *major = LIBMOSQUITTO_MAJOR;
@@ -721,7 +681,7 @@ namespace MQTT
 			will, tls);
 	}
 
-
+#if 0
 	XMqtt::XMqtt(const char* id, bool clean_session)
 	{
 		m_mosq = mosquitto_new(id, clean_session, this);
@@ -922,5 +882,6 @@ namespace MQTT
 	{
 		return mosquitto_tls_psk_set(m_mosq, psk, identity, ciphers);
 	}
+#endif 
 }
 

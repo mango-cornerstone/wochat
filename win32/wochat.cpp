@@ -502,12 +502,13 @@ int GetKeys(LPCTSTR path, U8* sk, U8* pk)
 }
 #endif
 
-static MQTTSubPrivateData spd;
+static MQTTPrivateData subdata;
+static MQTTPrivateData pubdata;
 
 DWORD WINAPI MQTTSubThread(LPVOID lpData)
 {
 	int ret = 0;
-	Mosquitto mq;
+	Mosquitto mq = nullptr;
 	HWND hWndUI;
 	MemoryPoolContext mempool;
 	InterlockedIncrement(&g_threadCount);
@@ -522,10 +523,10 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		goto QuitMQTTSubThread;
 	}
 
-	spd.hWnd = hWndUI;
-	spd.mempool = mempool;
+	subdata.hWnd = hWndUI;
+	subdata.mempool = mempool;
 
-	mq = MQTT::MQTT_SubInit(&spd, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
+	mq = MQTT::MQTT_SubInit(&subdata, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
 
 	if (nullptr == mq) // something is wrong in MQTT sub routine
 	{
@@ -536,7 +537,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	{
 		U8 topic[67];
 		Raw2HexString(g_PK, 33, topic, nullptr);
-		ret = MQTT::MQTT_AddSubTopic(CLIENT_SUB, (char*)topic);
+		ret = MQTT::MQTT_AddSubTopic(mempool, CLIENT_SUB, (char*)topic);
 	}
 
 	if(ret)
@@ -546,10 +547,12 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	}
 
 	MQTT::MQTT_SubLoop(mq, &g_Quit);  // main loop go here.
-	
+
 QuitMQTTSubThread:
-	mempool_destroy(mempool);
+
 	MQTT::MQTT_SubTerm(mq);
+	mq = nullptr;
+	mempool_destroy(mempool);
 	InterlockedDecrement(&g_threadCount);
 	return 0;
 }
@@ -570,22 +573,24 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 	size_t output_len;
 
 	InterlockedIncrement(&g_threadCount);
-
 	hWndUI = (HWND)(lpData);
 	ATLASSERT(::IsWindow(hWndUI));
 
-	mq = MQTT::MQTT_PubInit(hWndUI, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
+	mempool = mempool_create("MQTT_PUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+	if (nullptr == mempool)
+	{
+		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 2, 0);
+		goto QuitMQTTPubThread;
+	}
+
+	pubdata.hWnd = hWndUI;
+	pubdata.mempool = mempool;
+
+	mq = MQTT::MQTT_PubInit(&pubdata, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
 
 	if (nullptr == mq)
 	{
 		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 1, 0);
-		goto QuitMQTTPubThread;
-	}
-
-	mempool = mempool_create("MQTT_SUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
-	if (nullptr == mempool)
-	{
-		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 2, 0);
 		goto QuitMQTTPubThread;
 	}
 
@@ -654,18 +659,16 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 				pfree(msgbody);
 				msgbody = nullptr;
 			}
-
 			p = p->next;
 		}
 	}
 
-	mempool_destroy(mempool);
-
-QuitMQTTPubThread:
-
 	MQTT::MQTT_PubTerm(mq);
 
+QuitMQTTPubThread:
+	mempool_destroy(mempool);
 	InterlockedDecrement(&g_threadCount);
+
 	return 0;
 }
 
@@ -678,7 +681,7 @@ extern "C"
 	static int connack_result = 0;
 	static bool connack_received = false;
 
-	static int PostMQTTMessage(MQTTSubPrivateData* pd, const struct mosquitto_message* message, const mosquitto_property* properties)
+	static int PostMQTTMessage(MQTTPrivateData* pd, const struct mosquitto_message* message, const mosquitto_property* properties)
 	{
 		U8* msg;
 		size_t len;
@@ -786,14 +789,14 @@ extern "C"
 		int i;
 		bool res;
 		struct mosq_config* pMQTTConf;
-		MQTTSubPrivateData* pd;
+		MQTTPrivateData* pd;
 
 		UNUSED(properties);
 
 		pMQTTConf = (struct mosq_config*)obj;
 		assert(nullptr != pMQTTConf);
 
-		pd = (MQTTSubPrivateData*)(pMQTTConf->userdata);
+		pd = (MQTTPrivateData*)(pMQTTConf->userdata);
 		assert(pd);
 		assert(::IsWindow(pd->hWnd));
 
