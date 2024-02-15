@@ -3,9 +3,6 @@
 
 #define	XWIN_CARET_TIMER			666
 
-#define XWIN1_EDITBOX_SEARCH        15
-#define XWIN1_BUTTON_SEARCH         16
-
 #define IDM_EDITBOX_COPY			1000
 #define IDM_EDITBOX_CUT				1001
 #define IDM_EDITBOX_PASTE			1002

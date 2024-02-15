@@ -387,23 +387,18 @@ namespace MQTT
 	int MQTT_SubLoop(struct mosquitto* q, LONG* signal)
 	{
 		int ret;
-
 		assert(q);
-
-		ret = xmqtt_client_connect(q, &mqtt_cfg_sub);
-		if (MOSQ_ERR_SUCCESS != ret)
-		{
-			return 1;
-		}
 		// Main Loop
 		do
 		{
-			ret = mosquitto_loop(q, -1, 1);
+			ret = xmqtt_client_connect(q, &mqtt_cfg_sub);
+			if (MOSQ_ERR_SUCCESS != ret)
+				break;
+
+			ret = mosquitto_loop_forever(q, -1, 1);
 			Sleep(1000);
-
-		} while ((0 == *signal) && (MOSQ_ERR_SUCCESS == ret));
-
-		mosquitto_disconnect_v5(q, 0, mqtt_cfg_sub.disconnect_props);
+			mosquitto_disconnect_v5(q, 0, mqtt_cfg_sub.disconnect_props);
+		} while ((0 == *signal));
 
 		return MOSQ_ERR_SUCCESS;
 	}

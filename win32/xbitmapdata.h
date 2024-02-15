@@ -54,12 +54,14 @@
 #define XWIN0_BITMAP_NETWORKH       30 // Hover
 #define XWIN0_BITMAP_NETWORKP       31 // Press
 #define XWIN0_BITMAP_NETWORKA       32 // Active
-#define XWIN1_BITMAP_SEARCHN        33 // Normal
-#define XWIN1_BITMAP_SEARCHH        34 // Hover
-#define XWIN1_BITMAP_SEARCHP        35 // Press
-#define XWIN1_BITMAP_SEARCHA        36 // Active
 
-#define XWIN1_LABEL_PUBLICKEY       0
+#define XWIN1_BUTTON_SEARCH         0
+#define XWIN1_EDITBOX_SEARCH        1
+
+#define XWIN1_BITMAP_SEARCHN        0 // Normal
+#define XWIN1_BITMAP_SEARCHH        1 // Hover
+#define XWIN1_BITMAP_SEARCHP        2 // Press
+#define XWIN1_BITMAP_SEARCHA        3 // Active
 
 #define XWIN5_BUTTON_EMOJI          0
 #define XWIN5_BUTTON_UPLOAD         1

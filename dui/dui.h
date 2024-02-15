@@ -270,15 +270,15 @@ protected:
     // for Button/Label, they are the same.
     // for Editbox with vertical scrollbar, they are not the same
     // inner size
-    int  left1   = 0;
-    int  top1    = 0;
-    int  right1  = 0;
-    int  bottom1 = 0;
+    int  m_left   = 0;
+    int  m_top    = 0;
+    int  m_right  = 0;
+    int  m_bottom = 0;
     // outer size
-    int  left2   = 0;
-    int  top2    = 0;
-    int  right2  = 0;
-    int  bottom2 = 0;
+    int  m_left2   = 0;
+    int  m_top2    = 0;
+    int  m_right2  = 0;
+    int  m_bottom2 = 0;
 
     U32  m_property = XCONTROL_PROP_NONE;
     U32  m_status = XCONTROL_STATE_NORMAL;
@@ -312,48 +312,48 @@ public:
 
     int getLeft(bool inner = true)
     {
-        assert(left1 >= 0);
-        assert(left2 >= 0);
-        return (inner ? left1 : left2);
+        assert(m_left >= 0);
+        assert(m_left2 >= 0);
+        return (inner ? m_left : m_left2);
     }
 
     int getRight(bool inner = true)
     {
-        assert(right1 >= 0);
-        assert(right2 >= 0);
-        return (inner ? right1 : right2);
+        assert(m_right >= 0);
+        assert(m_right2 >= 0);
+        return (inner ? m_right : m_right2);
     }
 
     int getTop(bool inner = true)
     {
-        assert(top1 >= 0);
-        assert(top2 >= 0);
+        assert(m_top >= 0);
+        assert(m_top2 >= 0);
 
-        return (inner ? top1 : top2);
+        return (inner ? m_top : m_top2);
     }
 
     int getBottom(bool inner = true)
     {
-        assert(bottom1 >= 0);
-        assert(bottom2 >= 0);
+        assert(m_bottom >= 0);
+        assert(m_bottom2 >= 0);
 
-        return (inner ? bottom1 : bottom2);
+        return (inner ? m_bottom : m_bottom2);
     }
 
     int getWidth(bool inner = true)
     {
-        assert(right1 >= left1);
-        assert(right2 >= left2);
+        assert(m_right >= m_left);
+        assert(m_right2 >= m_left2);
 
-        return (inner ? (right1 - left1) : (right2 - left2));
+        return (inner ? (m_right - m_left) : (m_right2 - m_left2));
     }
 
     int getHeight(bool inner = true)
     {
-        assert(bottom1 >= top1);
-        assert(bottom2 >= top2);
+        assert(m_bottom >= m_top);
+        assert(m_bottom2 >= m_top2);
 
-        return (inner ? (bottom1 - top1) : (bottom2 - top2));
+        return (inner ? (m_bottom - m_top) : (m_bottom2 - m_top2));
     }
 
     void setSize(int width, int height, bool inner = true)
@@ -362,15 +362,15 @@ public:
         assert(height >= 0);
         if (inner)
         {
-            left1 = top1 = 0;
-            right1 = width;
-            bottom1 = height;
+            m_left = m_top = 0;
+            m_right = width;
+            m_bottom = height;
         }
         else
         {
-            left2 = top2 = 0;
-            right2 = width;
-            bottom2 = height;
+            m_left2 = m_top2 = 0;
+            m_right2 = width;
+            m_bottom2 = height;
         }
     }
 
@@ -382,17 +382,17 @@ public:
         assert(bottom_ >= top_);
         if (inner)
         {
-            left1 = left_;
-            top1 = top_;
-            right1 = right_;
-            bottom1 = bottom_;
+            m_left = left_;
+            m_top = top_;
+            m_right = right_;
+            m_bottom = bottom_;
         }
         else
         {
-            left2 = left_;
-            top2 = top_;
-            right2 = right_;
-            bottom2 = bottom_;
+            m_left2 = left_;
+            m_top2 = top_;
+            m_right2 = right_;
+            m_bottom2 = bottom_;
         }
         AfterPositionIsChanged(inner);
     }
@@ -406,36 +406,29 @@ public:
 
         if (inner)
         {
-            w = right1 - left1;
-            h = bottom1 - top1;
+            w = m_right - m_left;
+            h = m_bottom - m_top;
 
             assert(w >= 0);
             assert(h >= 0);
 
-            left1 = left_;
-            top1 = top_;
-            right1 = left1 + w;
-            bottom1 = top1 + h;
-#if 0
-            // let the outer size to be the same as inner size
-            left2 = left1;
-            top2 = top1;
-            right2 = right1;
-            bottom2 = bottom1;
-#endif
+            m_left = left_;
+            m_top = top_;
+            m_right = m_left + w;
+            m_bottom = m_top + h;
         }
         else
         {
-            w = right2 - left2;
-            h = bottom2 - top2;
+            w = m_right2 - m_left2;
+            h = m_bottom2 - m_top2;
 
             assert(w >= 0);
             assert(h >= 0);
 
-            left2 = left_;
-            top2 = top_;
-            right2 = left2 + w;
-            bottom2 = top2 + h;
+            m_left2 = left_;
+            m_top2 = top_;
+            m_right2 = m_left2 + w;
+            m_bottom2 = m_top2 + h;
         }
 
         AfterPositionIsChanged(inner);
@@ -476,13 +469,13 @@ public:
             *inner = false;
         if (!(XCONTROL_PROP_STATIC & m_property)) // this is not a static control
         {
-            if (xPos >= left1 && xPos < right1 && yPos >= top1 && yPos < bottom1)
+            if (xPos >= m_left && xPos < m_right && yPos >= m_top && yPos < m_bottom)
             {
                 bRet = true;
                 if (inner)
                     *inner = true;
             }
-            else if (xPos >= left2 && xPos < right2 && yPos >= top2 && yPos < bottom2)
+            else if (xPos >= m_left2 && xPos < m_right2 && yPos >= m_top2 && yPos < m_bottom2)
             {
                 bRet = true;
                 if (inner)
@@ -575,7 +568,7 @@ class XButton : public XControl
     XBitmap* imgPress;
     XBitmap* imgActive;
 public:
-    virtual int Draw(int dx = 0, int dy = 0);
+    int Draw(int dx = 0, int dy = 0);
 
     int InitControl(void* ptr0 = nullptr, void* ptr1 = nullptr)
     {
@@ -667,6 +660,47 @@ inline bool IsHighSurrogate(U32 ch) throw()
     return (ch & 0xFC00) == 0xD800;
 }
 
+#define DUI_EDITBOXLINE_MAX_LENGTH      128
+class XEditBoxLine : public XControl  // one line edit box
+{
+private:
+    bool m_caret = false;
+    U32  m_bkgColor = 0xFFFFFFFF;
+    U32  m_caretAnchor = 0;
+    U32  m_caretPosition = 0;
+    U32  m_caretPositionOffset = 0;
+    int  m_Height = 0;  // the total height of the text in pixel
+    int  m_Offset = 0;  // the offset of the vertical scrollbar
+    //int  m_Width = 0;
+    wchar_t  m_Text[DUI_EDITBOXLINE_MAX_LENGTH + 1] = { 0 };
+    U32  m_TextLen = 0;
+public:
+    void* m_pTextFactory = nullptr;
+    void* m_pTextFormat = nullptr;
+    void* m_pTextLayout = nullptr;
+
+    XEditBoxLine()
+    {
+        m_property = XCONTROL_PROP_EDITBOX;
+    }
+
+    int OnTimer()
+    {
+        m_caret = !m_caret;
+        // if this editbox has focus, we need to redraw the caret on timer
+        return (m_property & XCONTROL_PROP_FOCUS) ? 1 : 0;
+    }
+
+    int InitControl(void* ptr0 = nullptr, void* ptr1 = nullptr);
+    int Draw(int dx = 0, int dy = 0);
+    int DrawText(int dx, int dy,
+        DUI_Surface surface = nullptr,
+        DUI_Brush brush = nullptr,
+        DUI_Brush brushSel = nullptr,
+        DUI_Brush brushCaret = nullptr, U64 flag = 0);
+
+};
+
 class XEditBox : public XControl
 {
 private:
@@ -709,7 +743,7 @@ public:
 
     int Draw(int dx = 0, int dy = 0);
 
-    virtual int DrawText(int dx, int dy,
+    int DrawText(int dx, int dy,
         DUI_Surface surface = nullptr,
         DUI_Brush brush = nullptr,
         DUI_Brush brushSel = nullptr,

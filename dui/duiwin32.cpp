@@ -38,8 +38,8 @@ int XLabel::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush, DUI_B
     ID2D1SolidColorBrush* pTextBrushSel     = (ID2D1SolidColorBrush*)brushSel;
     IDWriteTextLayout* pTextLayout          = (IDWriteTextLayout*)m_pTextLayout;
 
-    float X = static_cast<FLOAT>(dx + left1);
-    float Y = static_cast<FLOAT>(dy + top1);
+    float X = static_cast<FLOAT>(dx + m_left);
+    float Y = static_cast<FLOAT>(dy + m_top);
 
     if (pTextLayout && pD2DRenderTarget && pTextBrush && pTextBrushSel)
     {
@@ -77,12 +77,108 @@ void XLabel::setText(wchar_t* text, U16 len)
             IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
             pTextLayout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
             pTextLayout->GetMetrics(&tm);
-            left1 = 0;
-            right1 = static_cast<int>(tm.width) + 1;
-            top1 = 0;
-            bottom1 = static_cast<int>(tm.height) + 1;
+            m_left = 0;
+            m_right = static_cast<int>(tm.width) + 1;
+            m_top = 0;
+            m_bottom = static_cast<int>(tm.height) + 1;
         }
     }
+}
+
+int XEditBoxLine::InitControl(void* ptr0, void* ptr1)
+{
+    m_Cursor1 = dui_hCursorIBeam;
+    m_Cursor2 = dui_hCursorArrow;
+
+    m_pTextFactory = ptr0;
+    m_pTextFormat = ptr1;
+    m_TextLen = 0;
+    m_Text[0] = L'\0';
+
+    IDWriteFactory* pTextFactory = static_cast<IDWriteFactory*>(m_pTextFactory);
+    IDWriteTextFormat* pTextFormat = static_cast<IDWriteTextFormat*>(m_pTextFormat);
+    if (pTextFactory && pTextFormat)
+    {
+        SafeRelease((IDWriteTextLayout**)(&m_pTextLayout));
+
+        HRESULT hr = pTextFactory->CreateTextLayout(
+            m_Text,
+            m_TextLen,
+            pTextFormat,
+            1000.f,
+            1.f,
+            (IDWriteTextLayout**)(&m_pTextLayout));
+
+        if (S_OK == hr && m_pTextLayout)
+        {
+            DWRITE_TEXT_METRICS tm;
+            IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
+            pTextLayout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+            pTextLayout->GetMetrics(&tm);
+            m_Height = static_cast<int>(tm.height) + 1;
+        }
+    }
+    return m_pTextLayout ? 0 : 1;
+}
+
+
+int XEditBoxLine::DrawText(int dx, int dy, DUI_Surface surface,DUI_Brush brush, DUI_Brush brushSel, DUI_Brush brushCaret, U64 flag)
+{
+    float W, H;
+    float X = static_cast<FLOAT>(dx + m_left + 5);
+    float Y = static_cast<FLOAT>(dy + m_top + ((m_bottom - m_top - m_Height)>>1));
+
+    ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
+    ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brush);
+    ID2D1SolidColorBrush* pTextBrushSel = static_cast<ID2D1SolidColorBrush*>(brushSel);
+    ID2D1SolidColorBrush* pTextBrushCaret = static_cast<ID2D1SolidColorBrush*>(brushCaret);
+    IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
+
+    if (pTextLayout && pD2DRenderTarget && pTextBrush && pTextBrushSel && brushCaret)
+    {
+        D2D1_POINT_2F orgin;
+        D2D1_RECT_F clipRect;
+        DWRITE_TEXT_RANGE caretRange;
+
+        if (m_caret && (m_property & XCONTROL_PROP_FOCUS)) // if the caret is visible and this editbox has the focus, we draw the caret
+        {
+            RectF caretRect = {};
+            DWRITE_HIT_TEST_METRICS caretMetrics;
+            float caretX, caretY;
+            pTextLayout->HitTestTextPosition(m_caretPosition, m_caretPositionOffset > 0, &caretX, &caretY, &caretMetrics);
+            DWORD caretIntThickness = 2;
+            SystemParametersInfo(SPI_GETCARETWIDTH, 0, &caretIntThickness, FALSE); // get the width of the caret
+            const float caretThickness = float(caretIntThickness);
+            
+            caretRect.left = caretX - caretThickness / 2.0f;
+            caretRect.right = caretRect.left + caretThickness;
+            caretRect.top = caretY;
+            caretRect.bottom = caretY + caretMetrics.height;
+
+            W = caretRect.right - caretRect.left;
+            H = caretRect.bottom - caretRect.top;
+
+            caretRect.left = X + caretRect.left;
+            caretRect.top = Y + caretRect.top;
+            caretRect.right = caretRect.left + W;
+            caretRect.bottom = caretRect.top + H;
+            if (caretRect.top < static_cast<FLOAT>(dy + m_top))
+            {
+                m_Offset = static_cast<int>(caretRect.top) - (dy + m_top) - 1;
+            }
+
+            if (caretRect.bottom > static_cast<FLOAT>(dy + m_bottom))
+            {
+                m_Offset = static_cast<int>(caretRect.bottom) + 1 - (dy + m_bottom);
+            }
+
+            pD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+            pD2DRenderTarget->FillRectangle(caretRect, pTextBrushCaret);
+            pD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        }
+    }
+
+    return 0;
 }
 
 U16 XEditBox::ExtractText(wchar_t* buffer, U16 maxlen)
@@ -113,8 +209,8 @@ U16 XEditBox::ExtractText(wchar_t* buffer, U16 maxlen)
                     m_Text.c_str(),
                     m_Text.length(),
                     pTextFormat,
-                    static_cast<FLOAT>(right1 - left1),
-                    static_cast<FLOAT>(bottom1 - top1),
+                    static_cast<FLOAT>(m_right - m_left),
+                    static_cast<FLOAT>(m_bottom - m_top),
                     (IDWriteTextLayout**)(&m_pTextLayout));
                 // Set the initial text layout and update caret properties accordingly.
                 if (m_pTextLayout)
@@ -131,8 +227,8 @@ int XEditBox::AfterPositionIsChanged(bool inner)
     IDWriteFactory* pTextFactory = static_cast<IDWriteFactory*>(m_pTextFactory);
     IDWriteTextFormat* pTextFormat = static_cast<IDWriteTextFormat*>(m_pTextFormat);
 
-    assert(right1 >= left1);
-    assert(bottom1 >= top1);
+    assert(m_right >= m_left);
+    assert(m_bottom >= m_top);
 
     if (pTextFactory && pTextFormat && inner)
     {
@@ -142,8 +238,8 @@ int XEditBox::AfterPositionIsChanged(bool inner)
             m_Text.c_str(),
             m_Text.length(),
             pTextFormat,
-            static_cast<FLOAT>(right1 - left1),
-            static_cast<FLOAT>(bottom1 - top1),
+            static_cast<FLOAT>(m_right - m_left),
+            static_cast<FLOAT>(m_bottom - m_top),
             (IDWriteTextLayout**)(&m_pTextLayout));
 
         // Set the initial text layout and update caret properties accordingly.
@@ -160,8 +256,8 @@ int XEditBox::Draw(int dx, int dy)
     IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
 
     assert(m_parentBuf);
-    assert(bottom1 > top1);
-    assert(bottom2 > top2);
+    assert(m_bottom > m_top);
+    assert(m_bottom2 > m_top2);
 
     if (pTextLayout)
     {
@@ -170,11 +266,11 @@ int XEditBox::Draw(int dx, int dy)
 
         m_Height = static_cast<int>(textMetrics.height) + 1;
 
-        int H = bottom2 - top2;
-        if (m_Height > (bottom1 - top1)) // we need to draw the vertical bar
+        int H = m_bottom2 - m_top2;
+        if (m_Height > (m_bottom - m_top)) // we need to draw the vertical bar
         {
             // Draw the vertical scroll bar
-            DUI_ScreenFillRect(m_parentBuf, m_parentW, m_parentH, 0xFF333333, 8, H, right2 - 8, top2);
+            DUI_ScreenFillRect(m_parentBuf, m_parentW, m_parentH, 0xFF333333, 8, H, m_right2 - 8, m_top2);
             //DUI_ScreenFillRectRound(m_screen, w, h, m_thumbColor, thumb_width, thumb_height, w - m_scrollWidth + 1, thumb_start, m_scrollbarColor, 0xFFD6D3D2);
         }
     }
@@ -940,8 +1036,8 @@ int XEditBox::OnKeyBoard(UINT32 msg, U64 wparam, U64 lparam)
 int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_Brush brushSel, DUI_Brush brushCaret, U64 flag)
 {
     float W, H;
-    float X = static_cast<FLOAT>(dx + left1);
-    float Y = static_cast<FLOAT>(dy + top1);
+    float X = static_cast<FLOAT>(dx + m_left);
+    float Y = static_cast<FLOAT>(dy + m_top);
 
     ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
     ID2D1SolidColorBrush* pTextBrush        = static_cast<ID2D1SolidColorBrush*>(brush);
@@ -955,10 +1051,10 @@ int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_
         D2D1_RECT_F clipRect;
         DWRITE_TEXT_RANGE caretRange;
 
-        clipRect.left = static_cast<FLOAT>(dx + left2);
-        clipRect.right = clipRect.left + static_cast<FLOAT>(right2 - left2);
-        clipRect.top = static_cast<FLOAT>(dy + top1);;
-        clipRect.bottom = clipRect.top + static_cast<FLOAT>(bottom2 - top2);
+        clipRect.left = static_cast<FLOAT>(dx + m_left2);
+        clipRect.right = clipRect.left + static_cast<FLOAT>(m_right2 - m_left2);
+        clipRect.top = static_cast<FLOAT>(dy + m_top);;
+        clipRect.bottom = clipRect.top + static_cast<FLOAT>(m_bottom2 - m_top2);
 
         DWRITE_TEXT_METRICS tm;
         pTextLayout->GetMetrics(&tm);
@@ -978,14 +1074,14 @@ int XEditBox::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush,DUI_
             caretRect.top = Y + caretRect.top;
             caretRect.right = caretRect.left + W;
             caretRect.bottom = caretRect.top + H;
-            if (caretRect.top < static_cast<FLOAT>(dy + top1))
+            if (caretRect.top < static_cast<FLOAT>(dy + m_top))
             {
-                m_Offset = static_cast<int>(caretRect.top) - (dy + top1) - 1;
+                m_Offset = static_cast<int>(caretRect.top) - (dy + m_top) - 1;
             }
 
-            if (caretRect.bottom > static_cast<FLOAT>(dy + bottom1))
+            if (caretRect.bottom > static_cast<FLOAT>(dy + m_bottom))
             {
-                m_Offset = static_cast<int>(caretRect.bottom) + 1 - (dy + bottom1);
+                m_Offset = static_cast<int>(caretRect.bottom) + 1 - (dy + m_bottom);
             }
 
             pD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);

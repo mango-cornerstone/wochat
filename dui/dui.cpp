@@ -92,7 +92,7 @@ int XControl::DoMouseMove(int x, int y, int idxActive)
     }
 
     // the mousr point is in the inner area. In this case, we should set the status to hovered.
-    if ((x >= left1) && (y >= top1) && (x < right1) && (y < bottom1))
+    if ((x >= m_left) && (y >= m_top) && (x < m_right) && (y < m_bottom))
     {
         r = (m_status == XCONTROL_STATE_HOVERED) ? 0 : 1;
         m_status = XCONTROL_STATE_HOVERED;
@@ -100,7 +100,7 @@ int XControl::DoMouseMove(int x, int y, int idxActive)
         return r;
     }
     // the mousr point is in the outer area. In this case, we should set the status to hovered.
-    if ((x >= left2) && (y >= top2) && (x < right2) && (y < bottom2))
+    if ((x >= m_left2) && (y >= m_top2) && (x < m_right2) && (y < m_bottom2))
     {
         r = (m_status == XCONTROL_STATE_HOVERED) ? 0 : 1;
         m_status = XCONTROL_STATE_HOVERED;
@@ -137,7 +137,7 @@ int XControl::DoMouseLBClickDown(int x, int y, int* idxActive)
     }
 
     // the mousr point is in the inner area. In this case, we should set the status to hovered.
-    if ((x >= left1) && (y >= top1) && (x < right1) && (y < bottom1))
+    if ((x >= m_left) && (y >= m_top) && (x < m_right) && (y < m_bottom))
     {
         r = (m_status == XCONTROL_STATE_PRESSED) ? 0 : 1;
         m_status = XCONTROL_STATE_PRESSED;
@@ -148,7 +148,7 @@ int XControl::DoMouseLBClickDown(int x, int y, int* idxActive)
         return r;
     }
 #if 0
-    else if ((x >= left2) && (y >= top2) && (x < right2) && (y < bottom2)) // outer area check
+    else if ((x >= m_left2) && (y >= m_top2) && (x < m_right2) && (y < m_bottom2)) // outer area check
     {
         r = (m_status == XCONTROL_STATE_PRESSED) ? 0 : 1;
         m_status = XCONTROL_STATE_PRESSED;
@@ -187,7 +187,7 @@ int XControl::DoMouseLBClickUp(int x, int y, int* idxActive)
     }
 
     // the mousr point is in the inner area. In this case, we should set the status to hovered.
-    if ((x >= left1) && (y >= top1) && (x < right1) && (y < bottom1))
+    if ((x >= m_left) && (y >= m_top) && (x < m_right) && (y < m_bottom))
     {
         r = (m_status == XCONTROL_STATE_HOVERED) ? 0 : 1;
         m_status = XCONTROL_STATE_HOVERED;
@@ -198,7 +198,7 @@ int XControl::DoMouseLBClickUp(int x, int y, int* idxActive)
         return r;
     }
 #if 0
-    else if ((x >= left2) && (y >= top2) && (x < right2) && (y < bottom2)) // outer area check
+    else if ((x >= m_left2) && (y >= m_top2) && (x < m_right2) && (y < m_bottom2)) // outer area check
     {
         r = (m_status == XCONTROL_STATE_HOVERED) ? 0 : 1;
         m_status = XCONTROL_STATE_HOVERED;
@@ -231,7 +231,7 @@ int XControl::DoMouseRBClickUp(int x, int y, int absX, int absY, HWND hWnd)
         return r;
 
     // the mousr point is in the inner area. 
-    if ((x >= left1) && (y >= top1) && (x < right1) && (y < bottom1))
+    if ((x >= m_left) && (y >= m_top) && (x < m_right) && (y < m_bottom))
     {
         if (!(m_property & XCONTROL_PROP_FOCUS))
             return 0;
@@ -256,8 +256,8 @@ int XButton::Draw(int dx, int dy)
     {
         U32* dst = m_parentBuf;
         U32* src;
-        int w = right1 - left1;
-        int h = bottom1 - top1;
+        int w = m_right - m_left;
+        int h = m_bottom - m_top;
         XBitmap* bitmap;
 
         assert(w > 0 && h > 0);
@@ -286,12 +286,28 @@ int XButton::Draw(int dx, int dy)
         assert(nullptr != src);
 
         if (XCONTROL_PROP_ROUND & m_property)
-            DUI_ScreenDrawRectRound(dst, m_parentW, m_parentH, src, bitmap->w, bitmap->h, left1, top1, m_Color0, m_Color1);
+            DUI_ScreenDrawRectRound(dst, m_parentW, m_parentH, src, bitmap->w, bitmap->h, m_left, m_top, m_Color0, m_Color1);
         else
-            DUI_ScreenDrawRect(dst, m_parentW, m_parentH, src, bitmap->w, bitmap->h, left1, top1);
+            DUI_ScreenDrawRect(dst, m_parentW, m_parentH, src, bitmap->w, bitmap->h, m_left, m_top);
     }
 
     return 0;
 }
 
+int XEditBoxLine::Draw(int dx, int dy)
+{
+    if (nullptr != m_parentBuf)
+    {
+        U32* dst = m_parentBuf;
+        int w = m_right - m_left;
+        int h = m_bottom - m_top;
+        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFFFFFFF, w, h, m_left, m_top);
+        // Draw the border
+        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, w + 1, 1, m_left-1, m_top-1);
+        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, w + 2, 1, m_left-1, m_bottom);
+        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, 1, h + 1, m_left-1, m_top-1);
+        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, 1, h + 1, m_right, m_top-1);
+    }
+    return 0;
+}
 
