@@ -263,45 +263,6 @@ int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen)
 	return 0;
 }
 
-#if 0
-int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen)
-{
-	U8 oneChar, hiValue, lowValue, i;
-
-	for (i = 0; i < len; i += 2)
-	{
-		oneChar = input[i];
-		if (oneChar >= '0' && oneChar <= '9')
-			hiValue = oneChar - '0';
-		else if (oneChar >= 'A' && oneChar <= 'F')
-			hiValue = (oneChar - 'A') + 0x0A;
-		else return 1;
-
-		oneChar = input[i + 1];
-		if (oneChar >= '0' && oneChar <= '9')
-			lowValue = oneChar - '0';
-		else if (oneChar >= 'A' && oneChar <= 'F')
-			lowValue = (oneChar - 'A') + 0x0A;
-		else return 1;
-
-		output[(i >> 1)] = (hiValue << 4 | lowValue);
-	}
-
-	if (outlen)
-		*outlen = (len >> 1);
-
-	return 0;
-}
-
-
-int AESEncrypt(U8* input, int length, U8* output)
-{
-	mbedtls_aes_context master;
-	mbedtls_aes_init(&master);
-
-	return 0;
-}
-#endif
 #define SQL_STMT_MAX_LEN		1024
 
 int InitWoChatDatabase(LPCWSTR lpszPath)
@@ -355,152 +316,22 @@ extern "C"
 	static XMQTTMessage mqtt_message = { 0 };
 }
 
-#if 0
-int ConvertBinToHex(U8* pk, U16 len, U8* pkHex)
+// client_id is 23 characters, and sk is 32 bytes
+static int GenClientID(U8* client_id, U8* sk)
 {
-	int ret = 0;
+	int r = 1;
+	U8 output[32] = { 0 };
 
-	if (len == 33)
-	{
-		U8 oneChar;
-		for (U16 i = 0; i < len; i++)
-		{
-			oneChar = (pk[i] >> 4);
-			if(oneChar < 0x0A)
-				pkHex[(i << 1)] = oneChar + '0';
-			else
-				pkHex[(i << 1)] = (oneChar - 0x0A) + 'A';
+	mbedtls_sha256_context sha256_context;
+	mbedtls_sha256_init(&sha256_context);
+	mbedtls_sha256_starts(&sha256_context, 0);
+	mbedtls_sha256_update(&sha256_context, (const unsigned char*)sk, 32);
+	mbedtls_sha256_finish(&sha256_context, output);
 
-			oneChar = (pk[i] & 0x0F);
-			if (oneChar < 0x0A)
-				pkHex[(i << 1)+1] = oneChar + '0';
-			else
-				pkHex[(i << 1)+1] = (oneChar - 0x0A) + 'A';
-		}
-		pkHex[66] = 0;
-	}
-
-	return ret;
+	Raw2HexString(output, 11, client_id, nullptr);
+	r = 0;
+	return r;
 }
-
-int GetKeys(LPCTSTR path, U8* sk, U8* pk)
-{
-	int ret = 1;
-	U8  hexSK[32];
-	wchar_t keyFile[MAX_PATH + 1] = { 0 };
-	
-	swprintf((wchar_t*)keyFile, MAX_PATH, L"%s\\keys.txt", path);
-
-	DWORD fileAttributes = GetFileAttributesW(keyFile);
-	if (fileAttributes != INVALID_FILE_ATTRIBUTES && !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-	{
-		int  fd;
-		if (0 == _tsopen_s(&fd, keyFile, _O_RDONLY | _O_BINARY, _SH_DENYWR, 0))
-		{
-			U32  size, bytes;
-			U8*  p;
-			U8   hiChar, lowChar, hiValue, lowValue;
-			U8   buf[256];
-
-			size = (U32)_lseek(fd, 0, SEEK_END); /* get the file size */
-			if (size < 131)
-			{
-				_close(fd);
-				return 1;
-			}
-			_lseek(fd, 0, SEEK_SET); /* go to the begin of the file */
-			bytes = (U32)_read(fd, buf, 131);  /* try to detect PNG header */
-			if(bytes != 131)
-			{
-				_close(fd);
-				return 1;
-			}
-			_close(fd);
-
-			if (buf[64] != '\n')
-				return 1;
-
-			p = buf;
-			for (int i = 0; i < 32; i++)
-			{
-				hiChar = p[(i << 1)];
-				if (hiChar >= '0' && hiChar <= '9')
-					hiValue = hiChar - '0';
-				else if (hiChar >= 'A' && hiChar <= 'F')
-					hiValue = (hiChar - 'A') + 0x0A;
-				else return 1;
-
-				lowChar = p[(i << 1) + 1];
-				if (lowChar >= '0' && lowChar <= '9')
-					lowValue = lowChar - '0';
-				else if (lowChar >= 'A' && lowChar <= 'F')
-					lowValue = (lowChar - 'A') + 0x0A;
-				else return 1;
-
-				sk[i] = (hiValue << 4 | lowValue);
-			}
-
-			p = buf + 65;
-			for (int i = 0; i < 33; i++)
-			{
-				hiChar = p[(i << 1)];
-				if (hiChar >= '0' && hiChar <= '9')
-					hiValue = hiChar - '0';
-				else if (hiChar >= 'A' && hiChar <= 'F')
-					hiValue = (hiChar - 'A') + 0x0A;
-				else return 1;
-
-				lowChar = p[(i << 1) + 1];
-				if (lowChar >= '0' && lowChar <= '9')
-					lowValue = lowChar - '0';
-				else if (lowChar >= 'A' && lowChar <= 'F')
-					lowValue = (lowChar - 'A') + 0x0A;
-				else return 1;
-
-				pk[i] = (hiValue << 4 | lowValue);
-			}
-			ret = 0;
-		}
-	}
-
-	if (!bRet)
-	{
-		int fd;
-		U8  len, oneChar;
-		U8  hexString[65];
-		U8 text[256 + 1] = { 0 };
-
-		NTSTATUS status = BCryptGenRandom(NULL, (PUCHAR)hexSK, 32, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-		if (STATUS_SUCCESS != status)
-			return 1;
-
-		if (0 != _tsopen_s(&fd, iniFile, _O_CREAT | _O_WRONLY | _O_TRUNC | _O_TEXT, _SH_DENYWR, 0))
-			return 2;
-		for (int i = 0; i < 32; i++)
-		{
-			sk[i] = hexSK[i];
-			oneChar = (sk[i] >> 4) & 0x0F;
-			if (oneChar < 0x0A)
-				hexString[(i << 1)] = oneChar + '0';
-			else
-				hexString[(i << 1)] = (oneChar - 0x0A) + 'A';
-
-			oneChar = sk[i] & 0x0F;
-			if (oneChar < 0x0A)
-				hexString[(i << 1) + 1] = oneChar + '0';
-			else
-				hexString[(i << 1) + 1] = (oneChar - 0x0A) + 'A';
-		}
-		hexString[64] = 0;
-
-		sprintf_s((char*)text, 256, "[global]\nSK=%s\n", hexString);
-		len = strlen((const char*)text);
-		_write(fd, text, len);
-		_close(fd);
-	}
-    return ret;
-}
-#endif
 
 static MQTTPrivateData subdata;
 static MQTTPrivateData pubdata;
@@ -511,6 +342,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	Mosquitto mq = nullptr;
 	HWND hWndUI;
 	MemoryPoolContext mempool;
+	U8 topic[67];
 	InterlockedIncrement(&g_threadCount);
 
 	hWndUI = (HWND)(lpData);
@@ -526,6 +358,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	subdata.hWnd = hWndUI;
 	subdata.mempool = mempool;
 
+	GenClientID(subdata.client_id, g_SK); // generate the client id from the private key
 	mq = MQTT::MQTT_SubInit(&subdata, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
 
 	if (nullptr == mq) // something is wrong in MQTT sub routine
@@ -534,11 +367,8 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		goto QuitMQTTSubThread;
 	}
 
-	{
-		U8 topic[67];
-		Raw2HexString(g_PK, 33, topic, nullptr);
-		ret = MQTT::MQTT_AddSubTopic(mempool, CLIENT_SUB, (char*)topic);
-	}
+	Raw2HexString(g_PK, 33, topic, nullptr);
+	ret = MQTT::MQTT_AddSubTopic(mempool, CLIENT_SUB, (char*)topic);
 
 	if(ret)
 	{
@@ -585,6 +415,7 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 
 	pubdata.hWnd = hWndUI;
 	pubdata.mempool = mempool;
+	GenClientID(pubdata.client_id, g_SK); // generate the client id from the private key
 
 	mq = MQTT::MQTT_PubInit(&pubdata, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback);
 

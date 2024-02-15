@@ -24,7 +24,8 @@ extern "C" {
 typedef struct MQTTPrivateData
 {
 	void* mempool;
-	HWND hWnd;
+	HWND  hWnd;
+	U8    client_id[23];
 } MQTTPrivateData;
 
 typedef struct XMQTTMessage
