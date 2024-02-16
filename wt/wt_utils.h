@@ -6,6 +6,8 @@ extern "C" {
 
 #include "wochatypes.h"
 
+bool wt_IsBigEndian();
+
 int wt_Raw2HexString(U8* input, U8 len, U8* output, U8* outlen);
 int wt_HexString2Raw(U8* input, U8 len, U8* output, U8* outlen);
 int wt_Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);

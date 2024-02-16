@@ -1,9 +1,12 @@
-<svg version="1.1" width="600" height="190" xmlns="http://www.w3.org/2000/svg" >
+<svg version="1.1" width="600" height="250" xmlns="http://www.w3.org/2000/svg" >
 <defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" /></marker></defs>
 
 <text x="22" y="60" style="font-size:13px;font-family:'Arial'">02E3687B......FE8D</text>
-<text x="148" y="60" style="font-size:13px;font-family:'Arial'">|</text>
+<text x="148" y="59" style="font-size:13px;font-family:'Arial'">|</text>
 <text x="165" y="60" style="font-size:13px;font-family:'Arial'">kbXjONRXd1PvIOYl+FMr9C31AibnKX1W7JV/SYTB71rSFhgwvSs=</text>
+
+<path d="M 149 20 V 33" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+<text x="70" y="15" style="font-size:13px;font-family:'Microsoft Yahei'">竖线分隔符，一个字节</text>
 
 <path d="M 20 65 h 560 v -20 h -560 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
 <path d="M 140 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
@@ -14,21 +17,41 @@
 <text x="317" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">加密的消息包数据</text>
 <path d="M 160 40 v -5 a 5 5 0 0 1 5 -5 h 200 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 200 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
 
-<text x="375" y="90" style="font-size:13px;font-family:'Microsoft Yahei'">BASE64解码</text>
-<path d="M 370 70 v 35" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+<path d="M 160 70 v 30 L 50 120 V 148" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
+<path d="M 580 70 V 130" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
 
-<path d="M 80 140 h 500 v -20 h -500 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
-<path d="M 135 120 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
-<path d="M 305 120 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 50 180 h 530 v -20 h -530 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 170 160 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 220 160 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 270 160 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
 
-<path d="M 80 145 v 5 a 5 5 0 0 0 5 5 h 18 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 17 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
-<path d="M 305 145 v 5 a 5 5 0 0 0 5 5 h 128 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 127 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
-<path d="M 135 115 v -5 a 5 5 0 0 1 5 -5 h 75 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 75 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+<text x="85" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">32个字节</text>
+<text x="172" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">4个字节</text>
+<text x="222" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">4个字节</text>
 
-<text x="184" y="95" style="font-size:13px;font-family:'Microsoft Yahei'">SHA256哈希值</text>
-<text x="84" y="135" style="font-size:13px;font-family:'Microsoft Yahei'">4个字节</text>
-<text x="200" y="135" style="font-size:13px;font-family:'Microsoft Yahei'">32个字节</text>
-<text x="420" y="135" style="font-size:13px;font-family:'Microsoft Yahei'">n个字节</text>
-<text x="410" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">真正的数据</text>
-<text x="62" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">真正数据的长度</text>
+<path d="M 50 185 v 5 a 5 5 0 0 0 5 5 h 50 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 50 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
+<path d="M 170 155 v -5 a 5 5 0 0 1 5 -5 h 15 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 15 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+<path d="M 270 155 v -5 a 5 5 0 0 1 5 -5 h 145 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 145 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+
+<path d="M 195 135 v -30 H 425 V 128" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+
+<text x="65" y="215" style="font-size:13px;font-family:'Microsoft Yahei'">SHA256哈希值</text>
+<text x="360" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">n个字节的真正的数据</text>
+<text x="262" y="100" style="font-size:13px;font-family:'Microsoft Yahei'">真正数据的长度</text>
+
+<path d="M 220 240 h 80 v -20 h -80 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 240 220 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 260 220 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 280 220 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+
+<path d="M 220 185 V 208" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
+<path d="M 270 185 v 10 L 300 198 V 208" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
+
+<text x="226" y="235" style="font-size:13px;font-family:'Arial'">T</text>
+
+<text x="226" y="215" style="font-size:13px;font-family:'Arial'">0</text>
+<text x="246" y="215" style="font-size:13px;font-family:'Arial'">1</text>
+<text x="266" y="215" style="font-size:13px;font-family:'Arial'">2</text>
+<text x="286" y="215" style="font-size:13px;font-family:'Arial'">3</text>
+
 </svg>

@@ -1,5 +1,14 @@
 #include "wt_utils.h"
 
+
+static const uint16_t wochat_byte_order_detector = { 0x100 };
+#define WOCHAT_IS_BIG_ENDIAN (*((unsigned char *) (&wochat_byte_order_detector)) == 0x01)
+
+bool wt_IsBigEndian()
+{
+	return WOCHAT_IS_BIG_ENDIAN;
+}
+
 int wt_Raw2HexString(U8* input, U8 len, U8* output, U8* outlen)
 {
 	U8 idx, i;

@@ -2,49 +2,11 @@
 
 static void mbedtls_platform_zeroize(void* buf, size_t len)
 {
-    if (len > 0) 
+    if (buf && len > 0) 
     {
-#if defined(MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO)
-        explicit_bzero(buf, len);
-#if defined(HAVE_MEMORY_SANITIZER)
-        /* You'd think that Msan would recognize explicit_bzero() as
-         * equivalent to bzero(), but it actually doesn't on several
-         * platforms, including Linux (Ubuntu 20.04).
-         * https://github.com/google/sanitizers/issues/1507
-         * https://github.com/openssh/openssh-portable/commit/74433a19bb6f4cef607680fa4d1d7d81ca3826aa
-         */
-        __msan_unpoison(buf, len);
-#endif
-#elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
-        memset_s(buf, len, 0, len);
-#elif defined(_WIN32)
-        //SecureZeroMemory(buf, len);
         unsigned char* p = (unsigned char*)buf;
         for (size_t i = 0; i < len; i++)
             *p++ = 0;
-#else
-        memset_func(buf, 0, len);
-#endif
-
-#if defined(__GNUC__)
-        /* For clang and recent gcc, pretend that we have some assembly that reads the
-         * zero'd memory as an additional protection against being optimised away. */
-#if defined(__clang__) || (__GNUC__ >= 10)
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wvla"
-#elif defined(MBEDTLS_COMPILER_IS_GCC)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wvla"
-#endif
-        asm volatile ("" : : "m" (*(char(*)[len]) buf) : );
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(MBEDTLS_COMPILER_IS_GCC)
-#pragma GCC diagnostic pop
-#endif
-#endif
-#endif
     }
 }
 
@@ -268,6 +230,7 @@ static void chacha20_block(const uint32_t initial_state[16], unsigned char keyst
 #elif defined(__GNUC__)
 __attribute__((always_inline))
 #endif
+
 /**
  * Perform a fast block XOR operation, such that
  * r[i] = a[i] ^ b[i] where 0 <= i < n
@@ -332,7 +295,7 @@ static inline void mbedtls_xor(unsigned char* r, const unsigned char* a, const u
 #endif
 #endif
 #endif
-    for (; i < n; i++) 
+    for (i = 0; i < n; i++) 
     {
         r[i] = a[i] ^ b[i];
     }
