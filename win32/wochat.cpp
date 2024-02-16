@@ -1,44 +1,12 @@
 #include "pch.h"
 #include "mosquitto.h"
 #include "wochat.h"
-#include "mbedtls/base64.h"
-#include "mbedtls/sha256.h"
-#include "mbedtls/chacha20.h"
+#include "wt_base64.h"
+#include "wt_utils.h"
+#include "wt_sha256.h"
+#include "wt_chacha20.h"
 #include "secp256k1.h"
 #include "secp256k1_ecdh.h"
-
-
-static bool IsPublicKey(U8* str, const U8 len)
-{
-	bool bRet = false;
-
-	if (66 != len)
-		return false;
-
-	if (str)
-	{
-		U8 i, oneChar;
-
-		if (str[0] != '0') 
-			return false;
-
-		if ((str[1] == '2') || (str[1] == '3')) // the first two bytes is '02' or '03' for public key
-		{
-			for (i = 2; i < 66; i++)
-			{
-				oneChar = str[i];
-				if (oneChar >= '0' && oneChar <= '9')
-					continue;
-				if (oneChar >= 'A' && oneChar <= 'F')
-					continue;
-				break;
-			}
-			if (i == len)
-				bRet = true;
-		}
-	}
-	return bRet;
-}
 
 int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key)
 {
@@ -69,7 +37,6 @@ int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key)
 	}
 	return ret;
 }
-
 
 int GetPKFromSK(U8* sk, U8* pk)
 {
@@ -113,8 +80,8 @@ int PushReceiveMessageQueue(MessageTask* message_task)
 		{
 			break;
 		}
-		pfree(pd->task->message);
-		pfree(pd->task);
+		wt_pfree(pd->task->message);
+		wt_pfree(pd->task);
 		pd->task = p;
 	}
 
@@ -179,8 +146,8 @@ int PushSendMessageQueue(MessageTask* message_task)
 	
 		if (p->state > 1) // this task has been processed, we can free the memory
 		{
-			pfree(p->message);
-			pfree(p);
+			wt_pfree(p->message);
+			wt_pfree(p);
 		}
 		p = q;
 	}
@@ -192,76 +159,6 @@ int PushSendMessageQueue(MessageTask* message_task)
 	return 0;
 }
 
-int Raw2HexString(U8* input, U8 len, U8* output, U8* outlen)
-{
-	U8 idx, i;
-	const U8* hex_chars = (const U8*)"0123456789ABCDEF";
-
-	for (i = 0; i < len; i++)
-	{
-		idx = ((input[i] >> 4) & 0x0F);
-		output[(i << 1)] = hex_chars[idx];
-
-		idx = (input[i] & 0x0F);
-		output[(i << 1) + 1] = hex_chars[idx];
-	}
-
-	output[(i << 1)] = 0;
-	if (outlen)
-		*outlen = (i << 1);
-
-	return 0;
-}
-
-int HexString2Raw(U8* input, U8 len, U8* output, U8* outlen)
-{
-	U8 oneChar, hiValue, lowValue, i;
-
-	for (i = 0; i < len; i += 2)
-	{
-		oneChar = input[i];
-		if (oneChar >= '0' && oneChar <= '9')
-			hiValue = oneChar - '0';
-		else if (oneChar >= 'A' && oneChar <= 'F')
-			hiValue = (oneChar - 'A') + 0x0A;
-		else return 1;
-
-		oneChar = input[i + 1];
-		if (oneChar >= '0' && oneChar <= '9')
-			lowValue = oneChar - '0';
-		else if (oneChar >= 'A' && oneChar <= 'F')
-			lowValue = (oneChar - 'A') + 0x0A;
-		else return 1;
-
-		output[(i >> 1)] = (hiValue << 4 | lowValue);
-	}
-
-	if (outlen)
-		*outlen = (len >> 1);
-
-	return 0;
-}
-
-int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen)
-{
-	U8 idx, i;
-	const wchar_t* hex_chars = (const wchar_t*)(L"0123456789ABCDEF");
-
-	for (i = 0; i < len; i++)
-	{
-		idx = ((input[i] >> 4) & 0x0F);
-		output[(i << 1)] = hex_chars[idx];
-
-		idx = (input[i] & 0x0F);
-		output[(i << 1) + 1] = hex_chars[idx];
-	}
-
-	output[(i << 1)] = 0;
-	if (outlen)
-		*outlen = (i << 1);
-
-	return 0;
-}
 
 #define SQL_STMT_MAX_LEN		1024
 
@@ -321,14 +218,13 @@ static int GenClientID(U8* client_id, U8* sk)
 {
 	int r = 1;
 	U8 output[32] = { 0 };
+	wt_sha256_ctx ctx = { 0 };
 
-	mbedtls_sha256_context sha256_context;
-	mbedtls_sha256_init(&sha256_context);
-	mbedtls_sha256_starts(&sha256_context, 0);
-	mbedtls_sha256_update(&sha256_context, (const unsigned char*)sk, 32);
-	mbedtls_sha256_finish(&sha256_context, output);
+	wt_sha256_init(&ctx);
+	wt_sha256_update(&ctx, (const unsigned char*)sk, 32);
+	wt_sha256_final(&ctx, output);
 
-	Raw2HexString(output, 11, client_id, nullptr);
+	wt_Raw2HexString(output, 11, client_id, nullptr);
 	r = 0;
 	return r;
 }
@@ -348,7 +244,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 	hWndUI = (HWND)(lpData);
 	ATLASSERT(::IsWindow(hWndUI));
 
-	mempool = mempool_create("MQTT_SUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+	mempool = wt_mempool_create("MQTT_SUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
 	if (nullptr == mempool)
 	{
 		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 2, 0);
@@ -367,7 +263,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		goto QuitMQTTSubThread;
 	}
 
-	Raw2HexString(g_PK, 33, topic, nullptr);
+	wt_Raw2HexString(g_PK, 33, topic, nullptr);
 	ret = MQTT::MQTT_AddSubTopic(mempool, CLIENT_SUB, (char*)topic);
 
 	if(ret)
@@ -382,7 +278,7 @@ QuitMQTTSubThread:
 
 	MQTT::MQTT_SubTerm(mq);
 	mq = nullptr;
-	mempool_destroy(mempool);
+	wt_mempool_destroy(mempool);
 	InterlockedDecrement(&g_threadCount);
 	return 0;
 }
@@ -406,7 +302,7 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 	hWndUI = (HWND)(lpData);
 	ATLASSERT(::IsWindow(hWndUI));
 
-	mempool = mempool_create("MQTT_PUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+	mempool = wt_mempool_create("MQTT_PUB_POOL", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
 	if (nullptr == mempool)
 	{
 		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 2, 0);
@@ -441,28 +337,26 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 		while (p)
 		{
 			msglen = p->msgLen * sizeof(wchar_t);
-			mbedtls_base64_encode(NULL, 0, &output_len, NULL, (msglen + 4 + 32)); // get the encoded length only
-			msgbody = (U8*)palloc(mempool, 67 + output_len);
+			output_len = wt_b64_enc_len(msglen + 4 + 32) + 1;
+			msgbody = (U8*)wt_palloc(mempool, 67 + output_len);
 			
 			if (msgbody)
 			{
-				U8* MSG = (U8*)palloc(mempool, msglen + 4 + 32);
+				U8* MSG = (U8*)wt_palloc(mempool, msglen + 4 + 32);
 				if (MSG)
 				{
-
-					Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
-					Raw2HexString(g_PK, 33, msgbody, nullptr);
+					wt_Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
+					wt_Raw2HexString(g_PK, 33, msgbody, nullptr);
 					msgbody[66] = '|';
 
 					U32* pLen = (U32*)(MSG);
 					*pLen = (U32)msglen;
 
 					{
-						mbedtls_sha256_context sha256_context;
-						mbedtls_sha256_init(&sha256_context);
-						mbedtls_sha256_starts(&sha256_context, 0);
-						mbedtls_sha256_update(&sha256_context, (const unsigned char*)p->message, msglen);
-						mbedtls_sha256_finish(&sha256_context, MSG + 4);
+						wt_sha256_ctx ctx = { 0 };
+						wt_sha256_init(&ctx);
+						wt_sha256_update(&ctx, (const unsigned char*)p->message, msglen);
+						wt_sha256_final(&ctx, MSG + 4);
 					}
 
 					{
@@ -470,24 +364,25 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 						U8 Key[32] = { 0 };
 						U8 nonce[12];
 						GetKeyFromSKAndPK(g_SK, p->pubkey, Key);
-						mbedtls_chacha20_context cxt;
-						mbedtls_chacha20_init(&cxt);
-						m = mbedtls_chacha20_setkey(&cxt, Key);
+						wt_chacha20_context cxt;
+						wt_chacha20_init(&cxt);
+						m = wt_chacha20_setkey(&cxt, Key);
 						for (int i = 0; i < 12; i++)
 							nonce[i] = i;
-						m = mbedtls_chacha20_starts(&cxt, nonce, 0);
-						m = mbedtls_chacha20_update(&cxt, 4 + 32, (const unsigned char*)MSG, MSG);
-						m = mbedtls_chacha20_update(&cxt, msglen, (const unsigned char*)p->message, MSG + 4 + 32);
-						mbedtls_chacha20_free(&cxt);
+						m = wt_chacha20_starts(&cxt, nonce, 0);
+						m = wt_chacha20_update(&cxt, 4 + 32, (const unsigned char*)MSG, MSG);
+						m = wt_chacha20_update(&cxt, msglen, (const unsigned char*)p->message, MSG + 4 + 32);
+						wt_chacha20_free(&cxt);
 					}
-					mbedtls_base64_encode(msgbody + 67, output_len, &encoded_len, (const unsigned char*)MSG, (msglen + 4 + 32));
-					pfree(MSG);
+					wt_b64_encode((const char*)MSG, (msglen + 4 + 32), (char*)msgbody + 67, output_len);
+					msgbody[67 + output_len - 1] = 0; // zero-terminiated
+					wt_pfree(MSG);
 				}
 
 				MQTT::MQTT_PubMessage(mq, topic, (char*)msgbody, 67 + output_len);
 				InterlockedIncrement(&(p->state)); // we have processed this task.
 
-				pfree(msgbody);
+				wt_pfree(msgbody);
 				msgbody = nullptr;
 			}
 			p = p->next;
@@ -497,7 +392,7 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 	MQTT::MQTT_PubTerm(mq);
 
 QuitMQTTPubThread:
-	mempool_destroy(mempool);
+	wt_mempool_destroy(mempool);
 	InterlockedDecrement(&g_threadCount);
 
 	return 0;
@@ -542,65 +437,63 @@ extern "C"
 		if (msg[len]) // the last byte should be zero
 			return 0;
 
-		if (!IsPublicKey(msg, 66)) // the first 66 bytes are the public key of the sender
+		if (!wt_IsPublicKey(msg, 66)) // the first 66 bytes are the public key of the sender
 			return 0;
 		
 		if (msg[66] != '|')
 			return 0;
 
-		mt = (MessageTask*)palloc0(mempool, sizeof(MessageTask));
+		mt = (MessageTask*)wt_palloc0(mempool, sizeof(MessageTask));
 		if (mt)
 		{
-			size_t output_len = 0;
-			mbedtls_base64_decode(nullptr, 0, &output_len, msg + 67, len - 67 - 1); // get the bytes after decode, the last byte is 0
-			U8* p = (U8*)palloc(mempool, output_len);
+			int output_len = wt_b64_dec_len(len - 67 - 1); // get the bytes after decode, the last byte is 0
+			U8* p = (U8*)wt_palloc(mempool, output_len);
 			if (p)
 			{
 				int m;
 				U8 sha256hash[32];
 				U8 nonce[12];
 				U8 key[32] = { 0 };
-				mbedtls_chacha20_context cxt;
-				mbedtls_sha256_context sha256_context;
-
-				HexString2Raw(msg, 66, mt->pubkey, nullptr);
+				wt_chacha20_context cxt;
+				wt_HexString2Raw(msg, 66, mt->pubkey, nullptr);
 				GetKeyFromSKAndPK(g_SK, mt->pubkey, key);
-				mbedtls_base64_decode(p, output_len, &output_len, msg + 67, len - 67 - 1);
+				int realen = wt_b64_decode((const char*)msg + 67, len - 67 - 1, (char*)p, output_len);
 
-				mbedtls_chacha20_init(&cxt);
-				m = mbedtls_chacha20_setkey(&cxt, key);
+				wt_chacha20_init(&cxt);
+				m = wt_chacha20_setkey(&cxt, key);
 				for (int i = 0; i < 12; i++) nonce[i] = i;
-				m = mbedtls_chacha20_starts(&cxt, nonce, 0);
-				m = mbedtls_chacha20_update(&cxt, output_len, (const unsigned char*)p, p);  // decrypt the message
-				mbedtls_chacha20_free(&cxt);
+				m = wt_chacha20_starts(&cxt, nonce, 0);
+				m = wt_chacha20_update(&cxt, realen, (const unsigned char*)p, p);  // decrypt the message
+				wt_chacha20_free(&cxt);
 
 				mt->msgLen = *((U32*)p); // get the length
-				if (mt->msgLen != output_len - 4 - 32)
+				if (mt->msgLen != realen - 4 - 32)
 				{
-					pfree(p);
-					pfree(mt);
-					return 0;
-				}
-					
-				mbedtls_sha256_init(&sha256_context);
-				mbedtls_sha256_starts(&sha256_context, 0);
-				mbedtls_sha256_update(&sha256_context, (const unsigned char*)p + 4 + 32, output_len - 4 - 32);
-				mbedtls_sha256_finish(&sha256_context, sha256hash);
-				if(memcmp(sha256hash, p + 4, 32)) // compare the hash value
-				{
-					pfree(p);
-					pfree(mt);
+					wt_pfree(p);
+					wt_pfree(mt);
 					return 0;
 				}
 
-				mt->message = (wchar_t*)palloc(mempool, mt->msgLen);
+				wt_sha256_ctx ctx = { 0 };
+				wt_sha256_init(&ctx);
+				wt_sha256_update(&ctx, (const unsigned char*)p + 4 + 32, realen - 4 - 32);
+				wt_sha256_final(&ctx, sha256hash);
+
+				if(memcmp(sha256hash, p + 4, 32)) // compare the hash value
+				{
+					wt_pfree(p);
+					wt_pfree(mt);
+					return 0;
+				}
+
+				mt->message = (wchar_t*)wt_palloc(mempool, mt->msgLen);
 				memcpy(mt->message, p + 36, mt->msgLen);
 				mt->msgLen /= sizeof(wchar_t);
-				pfree(p);
+				wt_pfree(p);
 				if (PushReceiveMessageQueue(mt))
 				{
-					pfree(mt->message);
-					pfree(mt);
+					wt_pfree(mt->message);
+					wt_pfree(mt);
 					return 0;
 				}
 
@@ -608,7 +501,7 @@ extern "C"
 			}
 			else
 			{
-				pfree(mt);
+				wt_pfree(mt);
 			}
 		}
 

@@ -1420,8 +1420,8 @@ static int InitInstance(HINSTANCE hInstance)
 	if (iRet)
 		return iRet;
 
-	HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
-	HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
+	wt_HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
+	wt_HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
 	GetPKFromSK(g_SK, g_PK);
 
 	iRet = MQTT::MQTT_Init();

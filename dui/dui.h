@@ -16,13 +16,9 @@
 #include <dwrite.h>
 #include <wincodec.h>
 #include "duiwin32.h"
-
 #endif 
 
-#include "dui_mempool.h"
-#include "dui_hash.h"
 #include "dui_render.h"
-
 
 #define DUI_DEBUG	1
 #define DUI_OK      0

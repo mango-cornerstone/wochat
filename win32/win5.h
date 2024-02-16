@@ -166,7 +166,7 @@ public:
 
 		objSize = sizeof(XButton);
 		id = XWIN5_BUTTON_EMOJI;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -188,7 +188,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_UPLOAD;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -210,7 +210,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_CAPTURE;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -232,7 +232,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_CHATHISTORY;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -254,7 +254,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_AUDIOCALL;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -276,7 +276,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_VIDEOCALL;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -298,7 +298,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_SENDMESSAGE;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -320,7 +320,7 @@ public:
 		else return;
 
 		id = XWIN5_BUTTON_HINT;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -345,7 +345,7 @@ public:
 
 		id = XWIN5_EDITBOX_INPUT;
 		objSize = sizeof(XEditBox);
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			editbox = new(mem)XEditBox;
@@ -391,10 +391,10 @@ public:
 
 			if (len > 0) // the user input some message that is ready to send
 			{
-				MessageTask* mt = (MessageTask*)palloc0(m_pool, sizeof(MessageTask));
+				MessageTask* mt = (MessageTask*)wt_palloc0(m_pool, sizeof(MessageTask));
 				if (mt)
 				{
-					wchar_t* msgInput = (wchar_t*)palloc(m_pool, len * sizeof(wchar_t));
+					wchar_t* msgInput = (wchar_t*)wt_palloc(m_pool, len * sizeof(wchar_t));
 					if (msgInput)
 					{
 						if (eb->ExtractText(msgInput, len))
@@ -415,14 +415,14 @@ public:
 							}
 							else
 							{
-								pfree(msgInput);
-								pfree(mt);
+								wt_pfree(msgInput);
+								wt_pfree(mt);
 							}
 						}
 					}
 					else
 					{
-						pfree(mt);
+						wt_pfree(mt);
 					}
 				}
 			}

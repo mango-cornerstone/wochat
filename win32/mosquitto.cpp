@@ -45,7 +45,7 @@ static int xmqtt_init_config(MemoryPoolContext mempool, struct mosq_config* cfg,
 		if (max_topics > MQTT_MAX_TOPICS)
 			cfg->maxtopics = MQTT_MAX_TOPICS;
 
-		cfg->topics = (char**)palloc(mempool, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
+		cfg->topics = (char**)wt_palloc(mempool, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
 		if (cfg->topics)
 			r = MOSQ_ERR_SUCCESS;
 		else
@@ -60,7 +60,7 @@ static int xmqtt_cfg_add_topic(MemoryPoolContext mempool, struct mosq_config* cf
 
 	if (mempool)
 	{
-		char* tp = pstrdup(mempool, topic);
+		char* tp = wt_pstrdup(mempool, topic);
 		if (!tp)
 			return 1;
 

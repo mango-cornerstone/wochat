@@ -85,7 +85,7 @@ public:
 
 		id = XWIN3_BUTTON_DOT;
 		objSize = sizeof(XButton);
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			XBitmap* bmpN;
@@ -107,7 +107,7 @@ public:
 
 		id = XWIN3_LABEL_TITLE;
 		objSize = sizeof(XLabel);
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			wchar_t title[67];
@@ -115,14 +115,14 @@ public:
 			assert(nullptr != lb);
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_TITLE);
 			lb->Init(id, "W3TITLE", g_pDWriteFactory, pTextFormat);
-			Raw2HexStringW(g_PKTo, 33, title, nullptr);
+			wt_Raw2HexStringW(g_PKTo, 33, title, nullptr);
 			lb->setText((wchar_t*)title, 66);
 			m_controlArray[id] = lb;
 		}
 
 		id = XWIN3_LABEL_NAME;
 		//objSize = sizeof(XLabel);
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 #if _DEBUG

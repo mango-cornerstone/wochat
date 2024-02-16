@@ -119,7 +119,7 @@ public:
 
 		id = XWIN0_BUTTON_ME;
 		objSize = sizeof(XButton);
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -137,7 +137,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_TALK;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -161,7 +161,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_FRIEND;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -183,7 +183,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_QUAN;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -205,7 +205,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_COIN;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -227,7 +227,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_FAVORITE;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -249,7 +249,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_FILE;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -271,7 +271,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_SETTING;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;
@@ -294,7 +294,7 @@ public:
 		else return;
 
 		id = XWIN0_BUTTON_NETWORK;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			button = new(mem)XButton;

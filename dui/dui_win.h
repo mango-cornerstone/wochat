@@ -145,7 +145,7 @@ public:
             xctl->Term();
         }
 
-        mempool_destroy(m_pool);
+        wt_mempool_destroy(m_pool);
         m_pool = nullptr;
     }
 
@@ -1116,9 +1116,9 @@ public:
             }
             
             if(m_Id[0] != '\0')
-                m_pool = mempool_create((const char*)m_Id, 0, initSize, maxSize);
+                m_pool = wt_mempool_create((const char*)m_Id, 0, initSize, maxSize);
             else 
-                m_pool = mempool_create("DUI_WIN", 0, initSize, maxSize);
+                m_pool = wt_mempool_create("DUI_WIN", 0, initSize, maxSize);
 
             if (nullptr != m_pool)
             {

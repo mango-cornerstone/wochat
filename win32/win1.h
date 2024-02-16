@@ -64,7 +64,7 @@ public:
 
 		objSize = sizeof(XButton);
 		id = XWIN1_BUTTON_SEARCH;
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			XButton* button = new(mem)XButton;
@@ -84,7 +84,7 @@ public:
 
 		id = XWIN1_EDITBOX_SEARCH;
 		objSize = sizeof(XEditBoxLine);
-		mem = (U8*)palloc(m_pool, objSize);
+		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
 			XEditBoxLine* eb = new(mem)XEditBoxLine;

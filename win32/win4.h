@@ -107,14 +107,14 @@ public:
 		if (i != 33) // if the public key is not the same, something is wrong
 			return 0;
 
-		p = (XChatMessage*)palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
+		p = (XChatMessage*)wt_palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
 		if (nullptr == p)
 			return 0;
 
-		p->message = (wchar_t*)palloc(m_chatGroup->mempool, sizeof(wchar_t) * (mt->msgLen));
+		p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, sizeof(wchar_t) * (mt->msgLen));
 		if (nullptr == p->message)
 		{
-			pfree(p);
+			wt_pfree(p);
 			return 0;
 		}
 
@@ -147,8 +147,8 @@ public:
 			}
 			else
 			{
-				pfree(p->message);
-				pfree(p);
+				wt_pfree(p->message);
+				wt_pfree(p);
 				return 0;
 			}
 			SafeRelease(&pTextLayout);
@@ -206,14 +206,14 @@ public:
 		if (i != 33) // if the public key is not the same, something is wrong
 			return 0;
 
-		p = (XChatMessage*)palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
+		p = (XChatMessage*)wt_palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
 		if (nullptr == p)
 			return 0;
 
-		p->message = (wchar_t*)palloc(m_chatGroup->mempool, sizeof(wchar_t)*(mt->msgLen));
+		p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, sizeof(wchar_t)*(mt->msgLen));
 		if (nullptr == p->message)
 		{
-			pfree(p);
+			wt_pfree(p);
 			return 0;
 		}
 
@@ -241,8 +241,8 @@ public:
 			}
 			else
 			{
-				pfree(p->message);
-				pfree(p);
+				wt_pfree(p->message);
+				wt_pfree(p);
 				return 0;
 			}
 			SafeRelease(&pTextLayout);

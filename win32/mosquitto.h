@@ -8,7 +8,7 @@
 #include "mosquitto/include/mosquitto.h"
 #include "mosquitto/include/mqtt_protocol.h"
 #include "dui/dui.h"
-#include "dui/dui_mempool.h"
+#include "wt/wt_mempool.h"
 
 #define CLIENT_PUB 1
 #define CLIENT_SUB 2

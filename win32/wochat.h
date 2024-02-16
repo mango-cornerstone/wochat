@@ -4,9 +4,9 @@
 #include "wochatypes.h"
 
 #include "dui.h"
+#include "wt_mempool.h"
+#include "wt_utils.h"
 #include "secp256k1.h"
-#include "mbedtls/build_info.h"
-#include "mbedtls/aes.h"
 #include "sqlite/sqlite3.h"
 
 extern LONG               g_threadCount;
@@ -127,7 +127,6 @@ typedef struct XChatGroup
 	MemoryPoolContext mempool;
 } XChatGroup;
 
-int AESEncrypt(U8* input, int length, U8* output);
 int InitWoChatDatabase(LPCWSTR lpszPath);
 
 int PushSendMessageQueue(MessageTask* message_task);
@@ -135,11 +134,6 @@ int PushReceiveMessageQueue(MessageTask* message_task);
 
 int GetPKFromSK(U8* sk, U8* pk);
 int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key);
-
-int Raw2HexString(U8* input, U8 len, U8* output, U8* outlen);
-int HexString2Raw(U8* input, U8 len, U8* output, U8* outlen);
-int Raw2HexStringW(U8* input, U8 len, wchar_t* output, U8* outlen);
-//int HexString2RawW(wchar_t* input, U8 len, U8* output, U8* outlen);
 
 int GetCurrentPublicKey(void* parent, U8* pk);
 bool IsHexString(U8* str, U8 len);

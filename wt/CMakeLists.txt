@@ -1,12 +1,16 @@
-project(libdui)
+project(libwt)
 
-file(GLOB LIBDUI_SRC 
-	"dui.cpp" 
-	"duiwin32.cpp" 
-	"dui_render.c" 
+file(GLOB LIBWT_SRC 
+	"wt_mempool.c"
+	"wt_hash.c"
+	"wt_base64.c"
+	"wt_aes256.c"
+	"wt_chacha20.c"
+	"wt_sha256.c"
+	"wt_utils.c"
 	)
 
-add_library(${PROJECT_NAME} ${LIBDUI_SRC})
+add_library(${PROJECT_NAME} ${LIBWT_SRC})
 set_property(TARGET ${PROJECT_NAME} PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 

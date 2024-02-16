@@ -52,14 +52,14 @@ public:
 		m_sizeAll.cy = 0;
 		m_sizeLine.cy = 0;
 
-		m_chatgroupRoot = (XChatGroup*)palloc0(m_pool, sizeof(XChatGroup));
+		m_chatgroupRoot = (XChatGroup*)wt_palloc0(m_pool, sizeof(XChatGroup));
 		if (nullptr != m_chatgroupRoot)
 		{
 			XChatGroup* p;
 			XChatGroup* q;
 
 			p = m_chatgroupRoot;
-			p->mempool = mempool_create("CHATGRUP", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
+			p->mempool = wt_mempool_create("CHATGRUP", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
 			if (nullptr != p->mempool)
 			{
 				m_chatgroupSelected = m_chatgroupRoot;
@@ -80,7 +80,7 @@ public:
 			}
 			else
 			{
-				pfree(m_chatgroupRoot);
+				wt_pfree(m_chatgroupRoot);
 				m_chatgroupRoot = nullptr;
 				return 1;
 			}
@@ -106,7 +106,7 @@ public:
 		while (nullptr != p)
 		{
 			assert(nullptr != p->mempool);
-			mempool_destroy(p->mempool);
+			wt_mempool_destroy(p->mempool);
 			p->mempool = nullptr;
 			p = p->next;
 		}
