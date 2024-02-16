@@ -1,5 +1,16 @@
-#include "wt_utils.h"
+/*
+ * The defined WIN32_NO_STATUS macro disables return code definitions in
+ * windows.h, which avoids "macro redefinition" MSVC warnings in ntstatus.h.
+ */
+#define WIN32_NO_STATUS
+#include <windows.h>
+#undef WIN32_NO_STATUS
+#include <ntstatus.h>
+#include <bcrypt.h>
 
+#include <nmmintrin.h>
+
+#include "wt_utils.h"
 
 static const uint16_t wochat_byte_order_detector = { 0x100 };
 #define WOCHAT_IS_BIG_ENDIAN (*((unsigned char *) (&wochat_byte_order_detector)) == 0x01)
@@ -113,4 +124,63 @@ bool wt_IsPublicKey(U8* str, const U8 len)
 		}
 	}
 	return bRet;
+}
+
+int wt_FillRandomData(U8* buf, U8 len)
+{
+	int r = 1;
+	if (buf)
+	{
+		NTSTATUS status = BCryptGenRandom(NULL, buf, len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+		if (STATUS_SUCCESS == status)
+			r = 0;
+	}
+	return r;
+}
+
+wt_crc32c wt_comp_crc32c_sse42(wt_crc32c crc, const void* data, size_t len)
+{
+	const unsigned char* p = data;
+	const unsigned char* pend = p + len;
+
+	/*
+	 * Process eight bytes of data at a time.
+	 *
+	 * NB: We do unaligned accesses here. The Intel architecture allows that,
+	 * and performance testing didn't show any performance gain from aligning
+	 * the begin address.
+	 */
+#ifdef _M_X64
+	while (p + 8 <= pend)
+	{
+		crc = (U32)_mm_crc32_u64(crc, *((const U64*)p));
+		p += 8;
+	}
+
+	/* Process remaining full four bytes if any */
+	if (p + 4 <= pend)
+	{
+		crc = _mm_crc32_u32(crc, *((const unsigned int*)p));
+		p += 4;
+	}
+#else
+	 /*
+	  * Process four bytes at a time. (The eight byte instruction is not
+	  * available on the 32-bit x86 architecture).
+	  */
+	while (p + 4 <= pend)
+	{
+		crc = _mm_crc32_u32(crc, *((const unsigned int*)p));
+		p += 4;
+	}
+#endif							/* _M_X64 */
+
+	/* Process any remaining bytes one at a time. */
+	while (p < pend)
+	{
+		crc = _mm_crc32_u8(crc, *p);
+		p++;
+	}
+
+	return crc;
 }

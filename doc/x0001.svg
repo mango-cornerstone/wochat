@@ -1,4 +1,4 @@
-<svg version="1.1" width="600" height="250" xmlns="http://www.w3.org/2000/svg" >
+<svg version="1.1" width="600" height="350" xmlns="http://www.w3.org/2000/svg" >
 <defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" /></marker></defs>
 
 <text x="22" y="60" style="font-size:13px;font-family:'Arial'">02E3687B......FE8D</text>
@@ -48,10 +48,17 @@
 <path d="M 270 185 v 10 L 300 198 V 208" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
 
 <text x="226" y="235" style="font-size:13px;font-family:'Arial'">T</text>
+<text x="243" y="235" style="font-size:13px;font-family:'Arial'">29</text>
 
 <text x="226" y="215" style="font-size:13px;font-family:'Arial'">0</text>
 <text x="246" y="215" style="font-size:13px;font-family:'Arial'">1</text>
 <text x="266" y="215" style="font-size:13px;font-family:'Arial'">2</text>
 <text x="286" y="215" style="font-size:13px;font-family:'Arial'">3</text>
+
+<path d="M 180 260 H 230 V 252" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+<path d="M 480 260 H 250 V 252" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+
+<text x="100" y="255" style="font-size:13px;font-family:'Microsoft Yahei'">表示后面数据的类型</text>
+<text x="360" y="255" style="font-size:13px;font-family:'Microsoft Yahei'">此字节表示偏移量</text>
 
 </svg>
