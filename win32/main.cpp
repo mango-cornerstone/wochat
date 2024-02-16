@@ -1516,7 +1516,25 @@ static int InitInstance(HINSTANCE hInstance)
 		ret = GetKeyFromSKAndPK(sk2, pk1, K2);
 		ret++;
 	}
+
+	{
+		U8 sk[32] = { 0 };
+		U8 k[32] = { 0 };
+		U8 c[32] = { 0 };
+		U8 p[32] = { 0 };
+
+		wt_HexString2Raw((U8*)"9614310CE21149F83E6FA13E30FAA6B6233F6ED0344BC2F5716921EF1988400B", 64, sk, nullptr);
+		wt_HexString2Raw((U8*)"2D65976AA60FDC65451A6244E4668AC9D757CEF2426B9FCECAC3BA0A52226EC4", 64, k, nullptr);
+		
+		AES256_ctx ctx = { 0 };
+		wt_AES256_init(&ctx, k);
+		wt_AES256_encrypt(&ctx, 2, c, sk);
+		wt_AES256_decrypt(&ctx, 2, p, c);
+
+		memset(&ctx, 0, sizeof(ctx));
+	}
 #endif
+
 	return iRet;
 }
 

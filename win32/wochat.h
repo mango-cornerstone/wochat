@@ -6,6 +6,8 @@
 #include "dui.h"
 #include "wt_mempool.h"
 #include "wt_utils.h"
+#include "wt_aes256.h"
+
 #include "secp256k1.h"
 #include "sqlite/sqlite3.h"
 

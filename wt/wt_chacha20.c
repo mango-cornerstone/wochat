@@ -13,6 +13,7 @@ static void mbedtls_platform_zeroize(void* buf, size_t len)
 static const uint16_t mbedtls_byte_order_detector = { 0x100 };
 #define MBEDTLS_IS_BIG_ENDIAN (*((unsigned char *) (&mbedtls_byte_order_detector)) == 0x01)
 
+
 /*
  * Detect MSVC built-in byteswap routines
  */
@@ -405,4 +406,9 @@ void wt_chacha20_free(wt_chacha20_context* ctx)
     {
         mbedtls_platform_zeroize(ctx, sizeof(wt_chacha20_context));
     }
+}
+
+bool wt_IsBigEndian()
+{
+    return MBEDTLS_IS_BIG_ENDIAN;
 }
