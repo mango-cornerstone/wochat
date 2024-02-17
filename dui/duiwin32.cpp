@@ -181,20 +181,28 @@ int XEditBoxLine::DrawText(int dx, int dy, DUI_Surface surface,DUI_Brush brush, 
     return 0;
 }
 
-U16 XEditBox::ExtractText(wchar_t* buffer, U16 maxlen)
+void XEditBox::Term()
 {
-    U16 len = 0;
+    IDWriteTextLayout* pTextLayout = static_cast<IDWriteTextLayout*>(m_pTextLayout);
+    SafeRelease(&pTextLayout);
+    m_pTextLayout = nullptr;
+}
+
+U32 XEditBox::GetInputMessage(U8* buffer, U32 length)
+{
+    U32 len = 0;
 
     if (buffer)
     {
-        len = (U16)m_Text.size();
+        len = (U32)m_Text.size();
 
-        if (len > maxlen)
-            len = maxlen;
+        if (len > length)
+            len = length;
 
-        for (U16 i = 0; i < len; i++)
+        wchar_t* p = (wchar_t*)buffer;
+        for (U32 i = 0; i < len; i++)
         {
-            buffer[i] = m_Text[i];
+            p[i] = m_Text[i];
         }
 
         if (len > 0)

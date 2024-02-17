@@ -439,3 +439,14 @@ void wt_sha256_final(wt_sha256_ctx* context, uint8* digest)
 	/* Clean up state data: */
 	memset(context, 0, sizeof(wt_sha256_ctx));
 }
+
+void wt_sha256_hash(const unsigned char* data, U32 length, U8* hash)
+{
+	if (data && hash)
+	{
+		wt_sha256_ctx ctx = { 0 };
+		wt_sha256_init(&ctx);
+		wt_sha256_update(&ctx, data, length);
+		wt_sha256_final(&ctx, hash);
+	}
+}

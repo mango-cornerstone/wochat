@@ -16,17 +16,26 @@
 
 #define MQTT_MAX_TOPICS		1024
 
-static mosq_config mqtt_cfg_pub;
-static mosq_config mqtt_cfg_sub;
+static MQTTConf mqtt_cfg_pub = { 0 };
+static MQTTConf mqtt_cfg_sub = { 0 };
 
-static int xmqtt_init_config(MemoryPoolContext mempool, struct mosq_config* cfg, int pub_or_sub, int max_topics)
+static int MQTTConfiugrationInit(MQTTConf* cfg, bool isPub)
 {
-	int r = MOSQ_ERR_ERRNO;
+	int r = MOSQ_ERR_NOMEM;
+	MemoryPoolContext ctx;
+	
+	assert(cfg);
 
-	if (mempool && cfg)
+	if(isPub)
+		ctx = wt_mempool_create("PubConfiguration", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+	else
+		ctx = wt_mempool_create("SubConfiguration", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+
+	if (ctx)
 	{
-		memset(cfg, 0, sizeof(struct mosq_config));
-		cfg->port = PORT_UNDEFINED;
+		memset(cfg, 0, sizeof(MQTTConf));
+		cfg->ctx = ctx;
+		cfg->port = MQTT_DEFAULT_PORT;
 		cfg->max_inflight = 20;
 		cfg->keepalive = 60;
 		cfg->clean_session = true;
@@ -38,26 +47,25 @@ static int xmqtt_init_config(MemoryPoolContext mempool, struct mosq_config* cfg,
 		cfg->random_filter = 10000;
 		cfg->protocol_version = MQTT_PROTOCOL_V5;  /* we use V5 as the default protocal */
 		cfg->session_expiry_interval = -1; /* -1 means unset here, the user can't set it to -1. */
-
-		cfg->maxtopics = max_topics;
-		if (max_topics < 1)
-			cfg->maxtopics = 1;
-		if (max_topics > MQTT_MAX_TOPICS)
-			cfg->maxtopics = MQTT_MAX_TOPICS;
-
-		cfg->topics = (char**)wt_palloc(mempool, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
+		cfg->maxtopics = MQTT_MAX_TOPICS;
+		cfg->topics = (char**)wt_palloc(ctx, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
 		if (cfg->topics)
 			r = MOSQ_ERR_SUCCESS;
-		else
-			r = MOSQ_ERR_NOMEM;
 	}
 	return r;
+}
+
+static void MQTTConfiugrationTerm(MQTTConf* cfg)
+{
+	assert(cfg);
+	wt_mempool_destroy(cfg->ctx);
+	memset(cfg, 0, sizeof(MQTTConf));
 }
 
 static int xmqtt_cfg_add_topic(MemoryPoolContext mempool, struct mosq_config* cfg, int type, char* topic, const char* arg)
 {
 	int r = MOSQ_ERR_ERRNO;
-
+#if 0
 	if (mempool)
 	{
 		char* tp = wt_pstrdup(mempool, topic);
@@ -104,14 +112,14 @@ static int xmqtt_cfg_add_topic(MemoryPoolContext mempool, struct mosq_config* cf
 		}
 		r = MOSQ_ERR_SUCCESS;
 	}
-
+#endif
 	return r;
 }
 
 static int xmqtt_client_set_config(MemoryPoolContext mempool, struct mosq_config* cfg, int pub_or_sub, char* host, int port, char* topic, int max_topic)
 {
 	int r = MOSQ_ERR_ERRNO;
-
+#if 0
 	if (mempool && cfg && host && topic)
 	{
 		int rc;
@@ -221,12 +229,13 @@ static int xmqtt_client_set_config(MemoryPoolContext mempool, struct mosq_config
 		}
 		r = MOSQ_ERR_SUCCESS;
 	}
-
+#endif 
 	return r;
 }
 
 static int xmqtt_client_opts_set(struct mosquitto* mosq, struct mosq_config* cfg)
 {
+#if 0
 #if defined(WITH_TLS) || defined(WITH_SOCKS)
 	int rc;
 #endif
@@ -273,11 +282,13 @@ static int xmqtt_client_opts_set(struct mosquitto* mosq, struct mosq_config* cfg
 		mosquitto_int_option(mosq, MOSQ_OPT_RECEIVE_MAXIMUM, cfg->msg_count);
 	}
 #endif 
+#endif
 	return MOSQ_ERR_SUCCESS;
 }
 
 static int xmqtt_client_connect(struct mosquitto* mosq, struct mosq_config* cfg)
 {
+#if 0
 #ifndef WIN32
 	char* err;
 #else
@@ -318,6 +329,7 @@ static int xmqtt_client_connect(struct mosquitto* mosq, struct mosq_config* cfg)
 		}
 		return rc;
 	}
+#endif
 	return MOSQ_ERR_SUCCESS;
 }
 
@@ -325,77 +337,85 @@ namespace MQTT
 {
 	int MQTT_Init()
 	{
-		return mosquitto_lib_init();
+		int r0 = MQTTConfiugrationInit(&mqtt_cfg_pub, true);
+		int r1 = MQTTConfiugrationInit(&mqtt_cfg_sub, false);
+		int r2 = mosquitto_lib_init();
+		int r = r0 + r1 + r2;
+		return r;
 	}
 
 	int MQTT_Term()
 	{
+		MQTTConfiugrationTerm(&mqtt_cfg_pub);
+		MQTTConfiugrationTerm(&mqtt_cfg_sub);
 		return mosquitto_lib_cleanup();
 	}
 
-	int MQTT_AddSubTopic(MemoryPoolContext mempool, int type, char* topic)
+	int MQTT_AddSubTopic(char* topic, bool isPub)
 	{
-		int ret = xmqtt_cfg_add_topic(mempool, &mqtt_cfg_sub, type, topic, NULL);
+		int ret = 1; // xmqtt_cfg_add_topic(mempool, &mqtt_cfg_sub, type, topic, NULL);
+		MQTTConf* cfg = isPub ? &mqtt_cfg_pub : &mqtt_cfg_sub;
+
+		assert(cfg);
+		assert(cfg->ctx);
+
+		if (wt_IsAlphabetString((U8*)topic, strlen(topic)))
+		{
+			char* tp = wt_pstrdup(cfg->ctx, topic);
+			if (tp)
+			{
+				if (cfg->topic_count >= MQTT_MAX_TOPICS)
+				{
+					// we reached the maximum topics
+					wt_pfree(tp);
+					return 1;
+				}
+				cfg->topic_count++;
+				cfg->topics[cfg->topic_count - 1] = tp;
+				ret = 0;
+			}
+		}
 		return ret;
 	}
 
-	int MQTT_SubLoop(struct mosquitto* mq, LONG* signal)
+	void MQTT_DestroyInstance(struct mosquitto* mq)
 	{
-		int rc;
-		assert(mq);
-
-		while (0 == *signal)
+		if (nullptr != mq)
 		{
-			rc = xmqtt_client_connect(mq, &mqtt_cfg_sub); // try to connect to the broker
-			if (MOSQ_ERR_SUCCESS == rc)  // if we are connected, go to the next step
-				break;
-			Sleep(3000); // otherwise sleep 3 seconds and try it again.
+			mosquitto_destroy(mq);
 		}
-		
-		while (0 == *signal) // Main Loop
-		{
-			for(;;)
-			{
-				if (*signal)
-					break;
-
-				rc = mosquitto_loop(mq, -1, 1);
-
-				if (rc != MOSQ_ERR_SUCCESS)
-					break;
-			} 
-
-			if (*signal)
-				break;
-
-			do
-			{
-				rc = mosquitto_reconnect(mq);
-				Sleep(1000);
-			} while (0 == *signal && rc != MOSQ_ERR_SUCCESS);
-		}
-
-		mosquitto_disconnect_v5(mq, 0, mqtt_cfg_sub.disconnect_props);
-		return MOSQ_ERR_SUCCESS;
 	}
 
-	int MQTT_SubTerm(Mosquitto q)
-	{
-		if (nullptr != q)
-		{
-			mosquitto_destroy(q);
-		}
-		return MOSQ_ERR_SUCCESS;
-	}
-
-	Mosquitto MQTT_SubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback)
+	struct mosquitto* MQTT_CreateInstance(MemoryPoolContext ctxThread, void* hWnd, char* client_id, char* host, int port, MQTT_Methods* callback, bool isPub)
 	{
 		int ret;
-		struct mosquitto* pMosq = NULL;
-
-		assert(privatedata);
+		struct mosquitto* mosq = NULL;
+		MQTTConf* cfg = isPub ? &mqtt_cfg_pub : &mqtt_cfg_sub;
+		
+		assert(cfg);
 		assert(callback);
 
+		cfg->ctxThread = ctxThread;
+		cfg->hWnd = hWnd;
+		cfg->id = client_id;
+		cfg->host = host;
+		cfg->port = port;
+
+		mosq = mosquitto_new((const char*)(cfg->id), false, cfg);
+		if (mosq)
+		{
+			mosquitto_subscribe_callback_set(mosq, callback->subscribe_callback);
+			mosquitto_connect_v5_callback_set(mosq, callback->connect_callback);
+			mosquitto_message_v5_callback_set(mosq, callback->message_callback);
+			if (cfg->debug)
+			{
+				mosquitto_log_callback_set(mosq, callback->log_callback);
+			}
+		}
+		return mosq;
+	}
+
+#if 0
 		ret = xmqtt_client_set_config(privatedata->mempool, &mqtt_cfg_sub, CLIENT_SUB, host, port, (char*)"WOCHAT", MQTT_MAX_TOPICS);
 		if (MOSQ_ERR_SUCCESS != ret)
 			return nullptr;
@@ -409,29 +429,27 @@ namespace MQTT
 		//xmqtt_client_id_generate(privatedata->mempool, &mqtt_cfg_sub);
 		mqtt_cfg_sub.userdata = privatedata;
 
-		pMosq = mosquitto_new((const char*)(privatedata->client_id), false, &mqtt_cfg_sub);
-		if (pMosq)
+		mosq = mosquitto_new((const char*)(privatedata->client_id), false, &mqtt_cfg_sub);
+		if (mosq)
 		{
-			ret = xmqtt_client_opts_set(pMosq, &mqtt_cfg_sub);
+			ret = xmqtt_client_opts_set(mosq, &mqtt_cfg_sub);
 			if (MOSQ_ERR_SUCCESS != ret)
 			{
-				mosquitto_destroy(pMosq);
+				mosquitto_destroy(mosq);
 				return nullptr;
 			}
 
 			if (mqtt_cfg_sub.debug)
 			{
-				mosquitto_log_callback_set(pMosq, callback->log_callback);
+				mosquitto_log_callback_set(mosq, callback->log_callback);
 			}
 
-			mosquitto_subscribe_callback_set(pMosq, callback->subscribe_callback);
-			mosquitto_connect_v5_callback_set(pMosq, callback->connect_callback);
-			mosquitto_message_v5_callback_set(pMosq, callback->message_callback);
+			mosquitto_subscribe_callback_set(mosq, callback->subscribe_callback);
+			mosquitto_connect_v5_callback_set(mosq, callback->connect_callback);
+			mosquitto_message_v5_callback_set(mosq, callback->message_callback);
 		}
-
-		return pMosq;
-	}
-
+#endif
+#if 0
 	Mosquitto MQTT_PubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback)
 	{
 		int ret;
@@ -471,16 +489,9 @@ namespace MQTT
 
 		return pMosq;
 	}
+#endif
 
-	int MQTT_PubTerm(Mosquitto q)
-	{
-		if (nullptr != q)
-		{
-			mosquitto_destroy(q);
-		}
-		return MOSQ_ERR_SUCCESS;
-	}
-
+#if 0
 	int MQTT_PubMessage(Mosquitto q, char* topic, char* message, int msglen)
 	{
 		int ret, mid;
@@ -500,7 +511,7 @@ namespace MQTT
 
 		return MOSQ_ERR_SUCCESS;
 	}
-
+#endif
 #if 0
 	static void on_connect_wrapper(struct mosquitto* mosq, void* userdata, int rc)
 	{
@@ -623,7 +634,7 @@ namespace MQTT
 			will, tls);
 	}
 
-	MQTT_EXPORT int subscribe_callback(
+	int subscribe_callback(
 		int (*callback)(struct mosquitto*, void*, const struct mosquitto_message*),
 		void* userdata,
 		const char* topic,

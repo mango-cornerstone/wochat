@@ -1,14 +1,16 @@
 #ifndef _WT_MOSQUITTO_H_
 #define _WT_MOSQUITTO_H_
 
-#define MQTT_EXPORT
-
 #include <cstdlib>
 #include <time.h>
 #include "mosquitto/include/mosquitto.h"
 #include "mosquitto/include/mqtt_protocol.h"
 #include "dui/dui.h"
 #include "wt/wt_mempool.h"
+#include "wt/wt_utils.h"
+
+#define MQTT_DEFAULT_HOST	("www.boobooke.com")
+#define MQTT_DEFAULT_PORT	1883
 
 #define CLIENT_PUB 1
 #define CLIENT_SUB 2
@@ -21,13 +23,6 @@
 extern "C" {
 #endif
 
-typedef struct MQTTPrivateData
-{
-	void* mempool;
-	HWND  hWnd;
-	U8    client_id[23];
-} MQTTPrivateData;
-
 typedef struct XMQTTMessage
 {
 	char* host;
@@ -37,8 +32,11 @@ typedef struct XMQTTMessage
 	int   msglen;
 } XMQTTMessage;
 
-struct mosq_config
+typedef struct MQTTConf
 {
+	MemoryPoolContext ctx; // the memory pool of this configuration
+	MemoryPoolContext ctxThread; // the memory pool of the sub or pub thread
+	void* hWnd; // the window handle of the UI window
 	char* id;
 	char* id_prefix;
 	int protocol_version;
@@ -104,8 +102,7 @@ struct mosq_config
 	bool have_topic_alias; /* pub */
 	char* response_topic; /* rr */
 	bool tcp_nodelay;
-	void* userdata;
-};
+} MQTTConf;
 
 typedef struct MQTT_Methods
 {
@@ -121,29 +118,26 @@ typedef struct MQTT_Methods
 }
 #endif
 
-typedef struct mosquitto* Mosquitto;
-
 namespace MQTT
 {
-	MQTT_EXPORT int MQTT_Init();
-	MQTT_EXPORT int MQTT_Term();
-	MQTT_EXPORT Mosquitto MQTT_SubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback);
-	MQTT_EXPORT int MQTT_SubLoop(Mosquitto q, LONG* signal);
-	MQTT_EXPORT int MQTT_SubTerm(Mosquitto q);
-	MQTT_EXPORT int MQTT_AddSubTopic(MemoryPoolContext mempool, int type, char* topic);
+	 int MQTT_Init();
+	 int MQTT_Term();
+	 struct mosquitto* MQTT_CreateInstance(MemoryPoolContext ctxThread, void* hWnd, char* client_id, char* host, int port, MQTT_Methods* callback, bool isPub);
+	 void MQTT_DestroyInstance(struct mosquitto* mq);
+	 int MQTT_AddSubTopic(char* topic, bool isPub = false);
+#if 0
+	 struct mosquitto* MQTT_PubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback);
+	 int MQTT_PubMessage(Mosquitto q, char* topic, char* message, int msglen);
+	 int MQTT_PubTerm(Mosquitto q);
 
-	MQTT_EXPORT Mosquitto MQTT_PubInit(MQTTPrivateData* privatedata, char* host, int port, MQTT_Methods* callback);
-	MQTT_EXPORT int MQTT_PubMessage(Mosquitto q, char* topic, char* message, int msglen);
-	MQTT_EXPORT int MQTT_PubTerm(Mosquitto q);
-
-	MQTT_EXPORT const char* strerror(int mosq_errno);
-	MQTT_EXPORT const char* connack_string(int connack_code);
-	MQTT_EXPORT int sub_topic_tokenise(const char* subtopic, char*** topics, int* count);
-	MQTT_EXPORT int sub_topic_tokens_free(char*** topics, int count);
-	MQTT_EXPORT int lib_version(int* major, int* minor, int* revision);
-	MQTT_EXPORT int topic_matches_sub(const char* sub, const char* topic, bool* result);
-	MQTT_EXPORT int validate_utf8(const char* str, int len);
-	MQTT_EXPORT int subscribe_simple(
+	 const char* strerror(int mosq_errno);
+	 const char* connack_string(int connack_code);
+	 int sub_topic_tokenise(const char* subtopic, char*** topics, int* count);
+	 int sub_topic_tokens_free(char*** topics, int count);
+	 int lib_version(int* major, int* minor, int* revision);
+	 int topic_matches_sub(const char* sub, const char* topic, bool* result);
+	 int validate_utf8(const char* str, int len);
+	 int subscribe_simple(
 		struct mosquitto_message** messages,
 		int msg_count,
 		bool retained,
@@ -159,7 +153,7 @@ namespace MQTT
 		const struct libmosquitto_will* will = NULL,
 		const struct libmosquitto_tls* tls = NULL);
 
-	MQTT_EXPORT int subscribe_callback(
+	 int subscribe_callback(
 		int (*callback)(struct mosquitto*, void*, const struct mosquitto_message*),
 		void* userdata,
 		const char* topic,
@@ -173,7 +167,7 @@ namespace MQTT
 		const char* password = NULL,
 		const struct libmosquitto_will* will = NULL,
 		const struct libmosquitto_tls* tls = NULL);
-
+#endif
 #if 0
 	/*
 	 * Class: XMqtt
@@ -181,7 +175,7 @@ namespace MQTT
 	 * A mosquitto client class. This is a C++ wrapper class for the mosquitto C
 	 * library. Please see mosquitto.h for details of the functions.
 	 */
-	class MQTT_EXPORT XMqtt 
+	class  XMqtt 
 	{
 	private:
 		struct mosquitto* m_mosq;

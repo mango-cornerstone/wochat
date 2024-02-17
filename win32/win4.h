@@ -36,9 +36,9 @@ public:
 		int r = 1;
 		if (m_chatGroup && pk)
 		{
-			r = 0;
 			for (int i = 0; i < 33; i++)
 				pk[i] = m_chatGroup->pubkey[i];
+			r = 0;
 		}
 		return r;
 	}
@@ -189,95 +189,103 @@ public:
 
 	int UpdateMyMessage(MessageTask* mt)
 	{
-		int i;
+		int r;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		XChatMessage* p = nullptr;
 		XChatMessage* q = nullptr;
 
-		if (nullptr == m_chatGroup)
+		if (nullptr == m_chatGroup || nullptr == mt)
 			return 0;
 
-		for (i = 0; i < 33; i++) // check the public key is the same or not
+		for (r = 0; r < 33; r++) // check the public key is the same or not
 		{
-			if (m_chatGroup->pubkey[i] != mt->pubkey[i])
+			if (m_chatGroup->pubkey[r] != mt->pubkey[r])
 				break;
 		}
-		if (i != 33) // if the public key is not the same, something is wrong
+		if (r != 33) // if the public key is not the same, something is wrong
 			return 0;
 
-		p = (XChatMessage*)wt_palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
-		if (nullptr == p)
-			return 0;
+		r = 0;
 
-		p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, sizeof(wchar_t)*(mt->msgLen));
-		if (nullptr == p->message)
+		if ('T' == mt->type)
 		{
-			wt_pfree(p);
-			return 0;
-		}
+#if 0
+			p = (XChatMessage*)wt_palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
+			if (nullptr == p)
+				return 0;
 
-		p->msgLen = mt->msgLen;
-		for (U16 i = 0; i < mt->msgLen; i++) // copy the text message
-			p->message[i] = mt->message[i];
-		
-		{  // determine the height of the text layout
-			IDWriteTextLayout* pTextLayout = nullptr;
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
-			FLOAT Wf = static_cast<FLOAT>(w*2/3); // the text width is half of the window
-			g_pDWriteFactory->CreateTextLayout(
-				p->message,
-				p->msgLen,
-				pTextFormat,
-				Wf,
-				static_cast<FLOAT>(1),
-				(IDWriteTextLayout**)(&pTextLayout));
-
-			if (pTextLayout)
+			p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, mt->msgLen);
+			if (nullptr == p->message)
 			{
-				pTextLayout->GetMetrics(&(p->tm));
-				p->height = static_cast<int>(p->tm.height) + 1 + WIN4_GAP_MESSAGE;
-				p->width = static_cast<int>(p->tm.width) + 1;
-			}
-			else
-			{
-				wt_pfree(p->message);
 				wt_pfree(p);
 				return 0;
 			}
-			SafeRelease(&pTextLayout);
-		}
 
-		p->state = XMESSAGE_FROM_ME;
+			p->msgLen = mt->msgLen;
+			for (U16 i = 0; i < mt->msgLen; i++) // copy the text message
+				p->message[i] = mt->message[i];
+
+			{  // determine the height of the text layout
+				IDWriteTextLayout* pTextLayout = nullptr;
+				IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+				FLOAT Wf = static_cast<FLOAT>(w * 2 / 3); // the text width is half of the window
+				g_pDWriteFactory->CreateTextLayout(
+					p->message,
+					p->msgLen,
+					pTextFormat,
+					Wf,
+					static_cast<FLOAT>(1),
+					(IDWriteTextLayout**)(&pTextLayout));
+
+				if (pTextLayout)
+				{
+					pTextLayout->GetMetrics(&(p->tm));
+					p->height = static_cast<int>(p->tm.height) + 1 + WIN4_GAP_MESSAGE;
+					p->width = static_cast<int>(p->tm.width) + 1;
+				}
+				else
+				{
+					wt_pfree(p->message);
+					wt_pfree(p);
+					return 0;
+				}
+				SafeRelease(&pTextLayout);
+			}
+
+			p->state = XMESSAGE_FROM_ME;
 #if _DEBUG
-		p->icon = (U32*)xbmpHeadMe;
+			p->icon = (U32*)xbmpHeadMe;
 #else
-		p->icon = (U32*)xbmpHeadGirl;
+			p->icon = (U32*)xbmpHeadGirl;
 #endif
-		p->w = p->h = 34;
-		p->next = p->prev = nullptr;
+			p->w = p->h = 34;
+			p->next = p->prev = nullptr;
 
-		if (nullptr == m_chatGroup->headMessage)
-			m_chatGroup->headMessage = p;
-		if (nullptr == m_chatGroup->tailMessage)
-			m_chatGroup->tailMessage = p;
-		else  // put this message on the tail of this double link
-		{
-			m_chatGroup->tailMessage->next = p;
-			p->prev = m_chatGroup->tailMessage;
-			m_chatGroup->tailMessage = p;
+			if (nullptr == m_chatGroup->headMessage)
+				m_chatGroup->headMessage = p;
+			if (nullptr == m_chatGroup->tailMessage)
+				m_chatGroup->tailMessage = p;
+			else  // put this message on the tail of this double link
+			{
+				m_chatGroup->tailMessage->next = p;
+				p->prev = m_chatGroup->tailMessage;
+				m_chatGroup->tailMessage = p;
+			}
+
+			if (p->height > 0)
+			{
+				m_sizeAll.cy += p->height;
+				m_ptOffset.y = (m_sizeAll.cy > h) ? (m_sizeAll.cy - h) : 0; // show the last message on the bottom
+			}
+
+			InterlockedIncrement(&(mt->state)); // ok, we have successfully processed this message task
+
+			InvalidateScreen();
+#endif
 		}
 
-		if (p->height > 0)
-		{
-			m_sizeAll.cy += p->height;
-			m_ptOffset.y = (m_sizeAll.cy > h) ? (m_sizeAll.cy - h) : 0; // show the last message on the bottom
-		}
-
-		InterlockedIncrement(&(mt->state)); // ok, we have successfully processed this message task
-
-		InvalidateScreen();
-		return 1;
+		return r;
 	}
 
 	int Do_DUI_PAINT(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
@@ -312,6 +320,7 @@ public:
 
 	int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{ 
+#if 0
 		U32 color;
 		bool isMe;
 		int x, y, dx, dy, W, H, pos;
@@ -378,6 +387,7 @@ public:
 				p = p->next;
 			}
 		}
+#endif
 		return 0; 
 	}
 };

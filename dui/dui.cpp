@@ -76,6 +76,30 @@ void DUI_Term()
 
 }
 
+int XControl::DoMouseLeave()
+{
+    int r = 0;
+
+    if (m_status != XCONTROL_STATE_NORMAL && m_status != XCONTROL_STATE_ACTIVE)
+        r++;
+    if (m_status != XCONTROL_STATE_ACTIVE)
+        m_status = XCONTROL_STATE_NORMAL;
+
+    return r;
+}
+
+int XControl::DoMouseHover(int x, int y)
+{
+    int r = -1;
+
+    if ((x >= m_left) && (y >= m_top) && (x < m_right) && (y < m_bottom))
+    {
+        r = m_Id;
+    }
+
+    return r;
+}
+
 int XControl::DoMouseMove(int x, int y, int idxActive)
 {
     int r = 0;

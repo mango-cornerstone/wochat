@@ -6,6 +6,7 @@
 #include "dui.h"
 #include "wt_mempool.h"
 #include "wt_utils.h"
+#include "wt_sha256.h"
 #include "wt_aes256.h"
 
 #include "secp256k1.h"
@@ -13,6 +14,8 @@
 
 extern LONG               g_threadCount;
 extern LONG               g_Quit;
+extern LONG               g_NetworkStatus;
+
 extern HANDLE             g_MQTTPubEvent;
 
 extern CRITICAL_SECTION    g_csMQTTSub;
@@ -34,17 +37,16 @@ extern IDWriteFactory* g_pDWriteFactory;
 
 IDWriteTextFormat* GetTextFormat(U8 idx);
 
-extern U8  g_SK[32];
-extern U8  g_PK[33];
-extern U8  g_PKTo[33];
+extern U8* g_SK;
+extern U8* g_PK;
+extern U8* g_PKTo;
+extern U8* g_MQTTPubClientId;
+extern U8* g_MQTTSubClientId;
 
 //int GetKeys(LPCTSTR path, U8* sk, U8* pk);
 
 DWORD WINAPI MQTTSubThread(LPVOID lpData);
 DWORD WINAPI MQTTPubThread(LPVOID lpData);
-
-#define MQTT_DEFAULT_HOST	("www.boobooke.com")
-#define MQTT_DEFAULT_PORT	1883
 
 #define WM_MQTT_PUBMESSAGE		(WM_USER + 300)
 #define WM_MQTT_SUBMESSAGE		(WM_USER + 301)
@@ -57,18 +59,20 @@ typedef struct MQTTMessage
 	MQTTMessage* next;
 	U8    processed;
 	char* topic;
-	int   msglen;
+	U32   msglen;
 	char* msgbody;
 } MQTTMessage;
 
+// a message node in the message queue
 typedef struct MessageTask
 {
 	MessageTask* next;
-	MessageTask* prev;
 	LONG state;
-	U8  pubkey[33];
-	wchar_t* message;
-	U32 msgLen;
+	U8   pubkey[33];
+	U8   type;
+	U8   hash[32]; // the SHA256 hash value of this node
+	U8*  message;
+	U32  msgLen;
 } MessageTask;
 
 typedef struct MQTTPubData
@@ -131,13 +135,12 @@ typedef struct XChatGroup
 
 int InitWoChatDatabase(LPCWSTR lpszPath);
 
-int PushSendMessageQueue(MessageTask* message_task);
+int PushTaskIntoSendMessageQueue(MessageTask* message_task);
 int PushReceiveMessageQueue(MessageTask* message_task);
 
-int GetPKFromSK(U8* sk, U8* pk);
+int GenPublicKeyFromSecretKey(U8* sk, U8* pk);
 int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key);
 
 int GetCurrentPublicKey(void* parent, U8* pk);
-bool IsHexString(U8* str, U8 len);
 
 #endif // __WT_WOCHAT_H__

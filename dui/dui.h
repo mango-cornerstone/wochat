@@ -298,6 +298,8 @@ public:
     int DoMouseLBClickUp(int x, int y, int* idxActive = nullptr);
     int DoMouseRBClickDown(int x, int y, int* idxActive = nullptr);
     int DoMouseRBClickUp(int x, int y, int absX, int absY, HWND hWnd);
+    int DoMouseLeave();
+    int DoMouseHover(int x, int y);
     int ShowCursor(bool inner = true);
 
     void setRoundColor(U32 c0, U32 c1)
@@ -766,25 +768,17 @@ public:
         return 0;
     }
 
-    U16 GetInputTextLength()
+    U32 GetInputMessageLengthInBytes()
     {
-        return ((U16)m_Text.size());
+        return (m_Text.size() * sizeof(wchar_t));
     }
 
-    U16 ExtractText(wchar_t* buffer, U16 maxlen);
+    U32 GetInputMessage(U8* buffer, U32 length);
 
     int AfterPositionIsChanged(bool inner = true);
     
-    void Term() 
-    {
-#if 0
-        SafeRelease(&m_pageBackgroundEffect);
-        SafeRelease(&m_textSelectionEffect);
-        SafeRelease(&m_imageSelectionEffect);
-        SafeRelease(&m_caretBackgroundEffect);
-#endif
-    }
-    
+    void Term();
+  
     void GetCaretRect(RectF& rect);
 
     int OnKeyBoard(U32 msg, U64 wparam = 0, U64 lparam = 0);

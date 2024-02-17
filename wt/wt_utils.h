@@ -33,6 +33,13 @@ bool wt_IsPublicKey(U8* str, const U8 len);
  */
 int wt_FillRandomData(U8* buf, U8 len);
 
+// generate a 32-byte random data. sk must be 32 bytes long
+int wt_GenerateSecretKey(U8* sk);
+
+bool wt_IsHexString(U8* str, U8 len);
+
+bool wt_IsAlphabetString(U8* str, U8 len);
+
 #ifdef __cplusplus
 }
 #endif

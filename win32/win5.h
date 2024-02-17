@@ -384,33 +384,29 @@ public:
 
 		if (DUI_KEYDOWN == uMsg && VK_RETURN == keyCode && !heldControl)
 		{
-			U16 len;
 			XEditBox* eb = (XEditBox*)m_controlArray[XWIN5_EDITBOX_INPUT];
+			assert(eb);
 
-			len = eb->GetInputTextLength();
-
+			U32 len = eb->GetInputMessageLengthInBytes();
 			if (len > 0) // the user input some message that is ready to send
 			{
 				MessageTask* mt = (MessageTask*)wt_palloc0(m_pool, sizeof(MessageTask));
 				if (mt)
 				{
-					wchar_t* msgInput = (wchar_t*)wt_palloc(m_pool, len * sizeof(wchar_t));
+					U8* msgInput = (U8*)wt_palloc(m_pool, len);
 					if (msgInput)
 					{
-						if (eb->ExtractText(msgInput, len))
+						if (eb->GetInputMessage(msgInput, len))
 						{
-							///SendWindowMessage(WM_XWINDOWS04, WIN4_GET_PUBLICKEY, (LPARAM)(mt->pubkeyTo));
-							//XWindow* parent = static_cast<XWindow>(lpData);
-							//parent->GetPublicKeyOfCurrentChatWindow(mt->pubkeyTo);
 							int r = GetCurrentPublicKey(lpData, mt->pubkey);
-							if (0x02 == mt->pubkey[0] || 0x03 == mt->pubkey[0]) // the first byte of public key is 02 or 03
+							if (0 == r && (0x02 == mt->pubkey[0] || 0x03 == mt->pubkey[0])) // the first byte of public key is 02 or 03
 							{
 								mt->message = msgInput;
 								mt->msgLen = len;
+								mt->type = 'T'; // this is the text message
+								wt_sha256_hash((const unsigned char*)mt->message, mt->msgLen, mt->hash);
+								PushTaskIntoSendMessageQueue(mt); // send to the network
 								PostWindowMessage(WM_XWINDOWS04, WIN4_UPDATE_MESSAGE, (LPARAM)mt);
-
-								PushSendMessageQueue(mt); // send to the network
-								
 								ret = 1;
 							}
 							else

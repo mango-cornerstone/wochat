@@ -11,6 +11,51 @@
 #include <nmmintrin.h>
 
 #include "wt_utils.h"
+#include "wt_sha256.h"
+
+bool wt_IsAlphabetString(U8* str, U8 len)
+{
+	bool bRet = false;
+
+	if (str && len)
+	{
+		U8 i, oneChar;
+		for (i = 0; i < len; i++)
+		{
+			oneChar = str[i];
+			if (oneChar >= '0' && oneChar <= '9')
+				continue;
+			if (oneChar >= 'A' && oneChar <= 'Z')
+				continue;
+			break;
+		}
+		if (i == len)
+			bRet = true;
+	}
+	return bRet;
+
+}
+bool wt_IsHexString(U8* str, U8 len)
+{
+	bool bRet = false;
+
+	if (str && len)
+	{
+		U8 i, oneChar;
+		for (i = 0; i < len; i++)
+		{
+			oneChar = str[i];
+			if (oneChar >= '0' && oneChar <= '9')
+				continue;
+			if (oneChar >= 'A' && oneChar <= 'F')
+				continue;
+			break;
+		}
+		if (i == len)
+			bRet = true;
+	}
+	return bRet;
+}
 
 int wt_Raw2HexString(U8* input, U8 len, U8* output, U8* outlen)
 {
@@ -105,10 +150,12 @@ bool wt_IsPublicKey(U8* str, const U8 len)
 				oneChar = str[i];
 				if (oneChar >= '0' && oneChar <= '9')
 					continue;
-				if (oneChar >= 'a' && oneChar <= 'f')
-					continue;
 				if (oneChar >= 'A' && oneChar <= 'F')
 					continue;
+#if 0
+				if (oneChar >= 'a' && oneChar <= 'f')
+					continue;
+#endif
 				break;
 			}
 			if (i == len)
@@ -129,6 +176,53 @@ int wt_FillRandomData(U8* buf, U8 len)
 	}
 	return r;
 }
+
+int wt_GenerateSecretKey(U8* sk)
+{
+	int r = 1;
+	if (sk)
+	{
+		U8 i, k;
+		U8* p;
+		U8* q;
+		NTSTATUS status;
+		U8 random_data[32] = { 0 };
+
+		for (U8 k=0; k<255; k++)
+		{
+			status = BCryptGenRandom(NULL, random_data, 32, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+			if (STATUS_SUCCESS == status)
+			{
+				p = random_data;
+				q = random_data + 16;
+				// compare the first 16 bytes with the last 16 bytes to be sure they are not the same. This is rare
+				for (i = 0; i < 16; i++) 
+				{
+					if (*p++ != *q++)
+						break;
+				}
+				if (i < 16)
+				{
+					wt_sha256_hash(random_data, 32, sk);
+					p = sk;
+					q = sk + 16;
+					for (i = 0; i < 16; i++)
+					{
+						if (*p++ != *q++)
+							break;
+					}
+					if (i < 16)
+					{
+						r = 0;
+						break;
+					}
+				}
+			}
+		}
+	}
+	return r;
+}
+
 
 wt_crc32c wt_comp_crc32c_sse42(wt_crc32c crc, const void* data, size_t len)
 {

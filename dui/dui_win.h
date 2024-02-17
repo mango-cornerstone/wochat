@@ -206,6 +206,12 @@ public:
         case DUI_RBUTTONUP:
             r = On_DUI_RBUTTONUP(msgId, wParam, lParam, lpData);
             break;
+        case DUI_MOUSELEAVE:
+            r = On_DUI_DUI_MOUSELEAVE(msgId, wParam, lParam, lpData);
+            break;
+        case DUI_MOUSEHOVER:
+            r = On_DUI_DUI_MOUSEHOVER(msgId, wParam, lParam, lpData);
+            break;
         case DUI_NCLBUTTONDOWN:
             r = On_DUI_NCLBUTTONDOWN(msgId, wParam, lParam, lpData);
             break;
@@ -293,16 +299,6 @@ public:
         T* pT = static_cast<T*>(this);
         pT->PostWindowShow();
 
-    }
-
-    bool SendWindowMessage(U32 message, U64 wParam = 0, U64 lParam = 0)
-    {
-        bool bRet = false;
-        assert(IsRealWindow(m_hWnd));
-#if defined(_WIN32)
-        bRet = ::SendMessage((HWND)m_hWnd, (UINT)message, (WPARAM)wParam, (LPARAM)lParam);
-#endif
-        return bRet;
     }
 
     bool PostWindowMessage(U32 message, U64 wParam = 0, U64 lParam = 0)
@@ -553,6 +549,57 @@ public:
         return DUI_STATUS_NEEDRAW;
     }
 
+    int On_DUI_DUI_MOUSEHOVER(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
+    {
+        int r = 0;
+        int xPos = GET_X_LPARAM(lParam);
+        int yPos = GET_Y_LPARAM(lParam);
+
+        bool bInMyArea = XWinPointInRect(xPos, yPos, &m_area); // is the point in my area?
+
+        if (bInMyArea && m_maxControl) // the mouse is hovering in my area and I also have the controls
+        {
+            int id;
+            XControl* xctl;
+            int dx = xPos - m_area.left;
+            int dy = yPos - m_area.top;
+            for (int i = 0; i < m_maxControl; i++)
+            {
+                xctl = m_controlArray[i];
+                assert(nullptr != xctl);
+                id = xctl->DoMouseHover(dx, dy);
+                if (id >= 0)
+                    break;    // we find the control that is hovering
+            }
+            if (id >= 0)
+            {
+                id = -1;
+            }
+        }
+
+        return r;
+    }
+
+    int On_DUI_DUI_MOUSELEAVE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
+    {
+        int r = 0;
+        XControl* xctl;
+
+        for (int i = 0; i < m_maxControl; i++)
+        {
+            xctl = m_controlArray[i];
+            assert(nullptr != xctl);
+            r += xctl->DoMouseLeave();
+        }
+
+        if (r)
+        {
+            m_status |= DUI_STATUS_NEEDRAW;
+            InvalidateDUIWindow();
+        }
+        return r;
+    }
+
     int On_DUI_NCLBUTTONDOWN(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
         XControl* xctl;
@@ -608,7 +655,7 @@ public:
             }
         }
 
-        if (DUI_STATUS_NODRAW != r)
+        if (r)
         {
             m_status |= DUI_STATUS_NEEDRAW;
             InvalidateDUIWindow();

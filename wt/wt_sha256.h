@@ -21,6 +21,7 @@ typedef struct wt_sha256_ctx
 void wt_sha256_init(wt_sha256_ctx* context);
 void wt_sha256_update(wt_sha256_ctx* context, const unsigned char* data, size_t len);
 void wt_sha256_final(wt_sha256_ctx* context, uint8* digest);
+void wt_sha256_hash(const unsigned char* data, U32 length, U8* hash);
 
 #ifdef __cplusplus
 }

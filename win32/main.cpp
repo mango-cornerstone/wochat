@@ -47,6 +47,14 @@ static const U8* default_public_key  = (const U8*)"0288D216B2CEB02171FF4FD3392C2
 ////////////////////////////////////////////////////////////////
 LONG 				g_threadCount = 0;
 LONG				g_Quit = 0;
+LONG                g_NetworkStatus = 0;
+
+// private key and public key
+U8*                 g_SK = nullptr;
+U8*                 g_PK = nullptr;
+U8*                 g_PKTo = nullptr;
+U8*                 g_MQTTPubClientId = nullptr;
+U8*                 g_MQTTSubClientId = nullptr;
 HINSTANCE			g_hInstance = nullptr;
 HANDLE				g_MQTTPubEvent;
 
@@ -68,17 +76,15 @@ HCURSOR				g_hCursorHand = nullptr;
 HCURSOR				g_hCursorIBeam = nullptr;
 wchar_t				g_AppPath[MAX_PATH + 1] = {0};
 
-// private key and public key
-U8					g_SK[32] = { 0 };
-U8					g_PK[33] = { 0 };
-U8					g_PKTo[33] = { 0 };
-//U8					g_PKText[67] = { 0 };
-//wchar_t				g_PKTextW[67] = { 0 };
-
 CAtlWinModule _Module;
 
+////////////////////////////////////////////////////////////////
+// local static variables
+////////////////////////////////////////////////////////////////
 static HMODULE hDLLD2D{};
 static HMODULE hDLLDWrite{};
+
+static MemoryPoolContext ctxTop = nullptr;
 
 IDWriteTextFormat* GetTextFormat(U8 idx)
 {
@@ -155,6 +161,7 @@ private:
 
 	UINT m_nDPI = 96;
 	float m_deviceScaleFactor = 1.f;
+	U8 m_isInThisWindow = 0;
 
 	XWindow0 m_win0;
 	XWindow1 m_win1;
@@ -306,15 +313,6 @@ public:
 
 		m_nDPI = GetDpiForWindow(m_hWnd);
 
-#if 0
-		{
-			TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT) };
-			tme.dwFlags = TME_LEAVE | TME_HOVER;
-			tme.hwndTrack = m_hWnd;
-			tme.dwHoverTime = 3000; // in ms
-			TrackMouseEvent(&tme);
-		}
-#endif
 		UINT_PTR id = SetTimer(XWIN_CARET_TIMER, 666);
 
 		return 0;
@@ -442,21 +440,12 @@ public:
 
 	LRESULT OnMouseLeave(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
-#if 0
-		static int ml = 0;
-
-		DebugPrintf("================MOUSE LEAVE is %d\n", ++ml);
-#endif
+		m_isInThisWindow = 0;
 		return 0;
 	}
 
 	LRESULT OnMouseHover(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
-#if 0
-		static int mh = 0;
-
-		DebugPrintf("================MOUSE HOVER is %d\n", ++mh);
-#endif
 		return 0;
 	}
 
@@ -549,6 +538,17 @@ public:
 		bool bChanged = false;
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
+
+		if (!m_isInThisWindow)
+		{
+			m_isInThisWindow = 1;
+
+			TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT) };
+			tme.dwFlags = TME_LEAVE | TME_HOVER;
+			tme.hwndTrack = m_hWnd;
+			tme.dwHoverTime = 3000; // in ms
+			TrackMouseEvent(&tme);
+		}
 
 		if (!DUIWindowInDragMode())
 		{
@@ -654,17 +654,6 @@ public:
 	{
 		switch (wParam)
 		{
-#if 0
-		case WIN4_GET_PUBLICKEY:
-			{
-				U8* pk = (U8*)lParam;
-				if (pk)
-				{
-					m_win4.GetPublicKey(pk);
-				}
-			}
-			break;
-#endif
 		case WIN4_UPDATE_MESSAGE:
 			{
 				MessageTask* mt = (MessageTask*)lParam;
@@ -1371,17 +1360,69 @@ static int GetApplicationPath(HINSTANCE hInstance)
 	return iRet;
 }
 
+/*
+ * MemoryContextInit
+ *		Start up the memory-context subsystem.
+ *
+ * This must be called before creating contexts or allocating memory in
+ * contexts.  
+ */
+static int MemoryContextInit()
+{
+	int r = 1;
+	ATLASSERT(ctxTop == nullptr);
+
+	ctxTop = wt_mempool_create("TopMemoryContext", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
+	if (ctxTop)
+	{
+		ATLASSERT(g_SK == nullptr);
+		ATLASSERT(g_PK == nullptr);
+		ATLASSERT(g_PKTo == nullptr);
+		ATLASSERT(g_MQTTPubClientId == nullptr);
+		ATLASSERT(g_MQTTSubClientId == nullptr);
+
+		g_SK   = (U8*)wt_palloc0(ctxTop, 32);
+		g_PK   = (U8*)wt_palloc0(ctxTop, 33);
+		g_PKTo = (U8*)wt_palloc0(ctxTop, 33);
+		g_MQTTPubClientId = (U8*)wt_palloc0(ctxTop, 23);
+		g_MQTTSubClientId = (U8*)wt_palloc0(ctxTop, 23);
+
+		if (g_SK && g_PK && g_PKTo && g_MQTTPubClientId && g_MQTTSubClientId)
+		{
+			U8 hash[32] = { 0 };
+			wt_HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
+			wt_HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
+			r = GenPublicKeyFromSecretKey(g_SK, g_PK);
+
+			wt_sha256_hash(g_SK, 32, hash);
+			wt_Raw2HexString(hash, 11, g_MQTTPubClientId, nullptr); // The MQTT client Id is 23 bytes long
+			wt_Raw2HexString(hash+16, 11, g_MQTTSubClientId, nullptr); // The MQTT client Id is 23 bytes long
+		}
+	}
+	return r;
+}
+
+static void MemoryContextTerm()
+{
+	wt_mempool_destroy(ctxTop);
+	ctxTop = nullptr;
+}
+
 static int InitInstance(HINSTANCE hInstance)
 {
 	int iRet = 0;
 	DWORD length = 0;
 	HRESULT hr = S_OK;
 
+	iRet = MemoryContextInit();
+	if (iRet)
+		return 1;
+
 	g_MQTTPubEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
 	if (NULL == g_MQTTPubEvent)
 	{
-		return 1;
+		return 2;
 	}
 
 	InitializeCriticalSection(&g_csMQTTSub);
@@ -1393,41 +1434,26 @@ static int InitInstance(HINSTANCE hInstance)
 	g_hCursorIBeam = ::LoadCursor(NULL, IDC_IBEAM);
 	if (NULL == g_hCursorWE || NULL == g_hCursorNS || NULL == g_hCursorHand || NULL == g_hCursorIBeam)
 	{
-		return 2;
-	}
-
-#if 0
-	// Initialize Direct2D and DirectWrite
-	g_pD2DFactory = nullptr;
-	hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &g_pD2DFactory);
-	if (S_OK != hr || nullptr == g_pD2DFactory)
-	{
-		MessageBox(NULL, _T("The calling of D2D1CreateFactory() is failed"), _T("WoChat Error"), MB_OK);
 		return 3;
 	}
-#endif 
 
 	if (!LoadD2D())
 	{
-		return 3;
+		return 4;
 	}
 
 	iRet = InitDirectWriteTextFormat(hInstance);
 	if (iRet)
-		return iRet;
+		return 5;
 
 	iRet = GetApplicationPath(hInstance);
 	if (iRet)
-		return iRet;
-
-	wt_HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
-	wt_HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
-	GetPKFromSK(g_SK, g_PK);
+		return 6;
 
 	iRet = MQTT::MQTT_Init();
 
 	if (MOSQ_ERR_SUCCESS != iRet)
-		return 6;
+		return 7;
 
 	iRet = DUI_Init();
 
@@ -1437,105 +1463,7 @@ static int InitInstance(HINSTANCE hInstance)
 	g_SubData.host = MQTT_DEFAULT_HOST;
 	g_SubData.port = MQTT_DEFAULT_PORT;
 
-#if 0
-	AESEncrypt(NULL, 0, NULL);
-	
-	{
-		int return_val;
-		size_t len;
-		U8 randomize[32];
-		U8 compressed_pubkey[33];
-		secp256k1_context* ctx;
-		secp256k1_pubkey pubkey;
-
-		ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
-		for (int i = 0; i < 32; i++)
-			randomize[i] = 137 - i;
-		return_val = secp256k1_context_randomize(ctx, randomize);
-		return_val = secp256k1_ec_pubkey_create(ctx, &pubkey, g_SK);
-		len = sizeof(compressed_pubkey);
-		return_val = secp256k1_ec_pubkey_serialize(ctx, compressed_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED);
-		secp256k1_context_destroy(ctx);
-	}
-
-	{
-		U32 crc;
-		char* p = "abc1";
-		INIT_CRC32C(crc);
-
-		COMP_CRC32C(crc, p, 4);
-		FIN_CRC32C(crc);
-
-		int i = 1;
-	}
-
-	InitWoChatDatabase(g_AppPath);
-
-	{
-		U32 hv;
-		hv = hash_bytes((const unsigned char*)"03342EF59638622ABEE545AFABA85463932DA66967F2BA4EE6254F9988BEE5F0C2", 66);
-		hv = hash_bytes((const unsigned char*)"B5C10E18A44C596BC0C213B9A3DD3E724C35B03BF2EBBADFB1B7C09AD2F9324C", 64);
-		hv = 0;
-	}
-
-	{
-		bool found;
-		HTAB* ht;
-		HASHCTL ctl;
-		ctl.keysize = 66;
-		ctl.entrysize = ctl.keysize + sizeof(void*);
-		ctl.hcxt = nullptr;
-
-		ht = hash_create("HASHT", 100, &ctl, HASH_ELEM | HASH_BLOBS);
-
-		void* ptr = hash_search(ht, g_PKText, HASH_ENTER, &found);
-
-		hash_destroy(ht);
-
-	}
-	{
-		int i = 321;
-		DebugPrintf("================The value is %d\n", i);
-	}
-
-	{
-		U8 sk1[32];
-		U8 sk2[32];
-		U8 pk1[33];
-		U8 pk2[33];
-		U8 K1[32] = { 0 };
-		U8 K2[32] = { 0 };
-		int ret;
-
-		HexString2Raw((U8*)"9614310CE21149F83E6FA13E30FAA6B6233F6ED0344BC2F5716921EF1988400B", 64, sk1, nullptr);
-		HexString2Raw((U8*)"2D65976AA60FDC65451A6244E4668AC9D757CEF2426B9FCECAC3BA0A52226EC4", 64, sk2, nullptr);
-		HexString2Raw((U8*)"03DB0E39AFB91AD07B0088B9B0EDDF5903230BC1C2F9AA08104FE0F10D4BAA0E0D", 66, pk1, nullptr);
-		HexString2Raw((U8*)"021790BF052D7940B861664ACA9729B48BD45498217A910CDF90D56C76045B9F7D", 66, pk2, nullptr);
-
-		ret = GetKeyFromSKAndPK(sk1, pk2, K1);
-		ret = GetKeyFromSKAndPK(sk2, pk1, K2);
-		ret++;
-	}
-
-	{
-		U8 sk[32] = { 0 };
-		U8 k[32] = { 0 };
-		U8 c[32] = { 0 };
-		U8 p[32] = { 0 };
-
-		wt_HexString2Raw((U8*)"9614310CE21149F83E6FA13E30FAA6B6233F6ED0344BC2F5716921EF1988400B", 64, sk, nullptr);
-		wt_HexString2Raw((U8*)"2D65976AA60FDC65451A6244E4668AC9D757CEF2426B9FCECAC3BA0A52226EC4", 64, k, nullptr);
-		
-		AES256_ctx ctx = { 0 };
-		wt_AES256_init(&ctx, k);
-		wt_AES256_encrypt(&ctx, 2, c, sk);
-		wt_AES256_decrypt(&ctx, 2, p, c);
-
-		memset(&ctx, 0, sizeof(ctx));
-	}
-#endif
-
-	return iRet;
+	return 0;
 }
 
 static void ExitInstance(HINSTANCE hInstance)
@@ -1568,16 +1496,13 @@ static void ExitInstance(HINSTANCE hInstance)
 		FreeLibrary(hDLLD2D);
 		hDLLD2D = {};
 	}
-#if 0
-	ReleaseUnknown(&g_pDWriteFactory);
-	ReleaseUnknown(&g_pD2DFactory);
-#endif
 
 	CloseHandle(g_MQTTPubEvent);
 	DeleteCriticalSection(&g_csMQTTSub);
 	DeleteCriticalSection(&g_csMQTTPub);
 
 	MQTT::MQTT_Term();
+	MemoryContextTerm();
 }
 
 // The main entry of WoChat
@@ -1607,7 +1532,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLi
 
 	iRet = InitInstance(hInstance);
 
-	if (0 != iRet)
+	if (iRet)
 	{
 		wchar_t msg[MAX_PATH + 1] = { 0 };
 		swprintf((wchar_t*)msg, MAX_PATH, L"InitInstance() is failed. Return code:[%d]", iRet);
