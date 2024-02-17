@@ -196,8 +196,8 @@ U32 XEditBox::GetInputMessage(U8* buffer, U32 length)
     {
         len = (U32)m_Text.size();
 
-        if (len > length)
-            len = length;
+        if (len > length / sizeof(wchar_t))
+            len = length / sizeof(wchar_t);
 
         wchar_t* p = (wchar_t*)buffer;
         for (U32 i = 0; i < len; i++)

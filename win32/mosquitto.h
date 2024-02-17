@@ -34,6 +34,7 @@ typedef struct XMQTTMessage
 
 typedef struct MQTTConf
 {
+	bool pub_or_sub;  /* true = pub, false = sub */
 	MemoryPoolContext ctx; // the memory pool of this configuration
 	MemoryPoolContext ctxThread; // the memory pool of the sub or pub thread
 	void* hWnd; // the window handle of the UI window

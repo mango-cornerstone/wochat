@@ -34,6 +34,7 @@ static int MQTTConfiugrationInit(MQTTConf* cfg, bool isPub)
 	if (ctx)
 	{
 		memset(cfg, 0, sizeof(MQTTConf));
+		cfg->pub_or_sub = isPub;
 		cfg->ctx = ctx;
 		cfg->port = MQTT_DEFAULT_PORT;
 		cfg->max_inflight = 20;
@@ -47,9 +48,14 @@ static int MQTTConfiugrationInit(MQTTConf* cfg, bool isPub)
 		cfg->random_filter = 10000;
 		cfg->protocol_version = MQTT_PROTOCOL_V5;  /* we use V5 as the default protocal */
 		cfg->session_expiry_interval = -1; /* -1 means unset here, the user can't set it to -1. */
-		cfg->maxtopics = MQTT_MAX_TOPICS;
-		cfg->topics = (char**)wt_palloc(ctx, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
-		if (cfg->topics)
+		if (!isPub)
+		{
+			cfg->maxtopics = MQTT_MAX_TOPICS;
+			cfg->topics = (char**)wt_palloc(ctx, ((cfg->maxtopics) * sizeof(char*))); // an array of char* pointer
+			if (cfg->topics)
+				r = MOSQ_ERR_SUCCESS;
+		}
+		else
 			r = MOSQ_ERR_SUCCESS;
 	}
 	return r;
@@ -404,7 +410,7 @@ namespace MQTT
 		mosq = mosquitto_new((const char*)(cfg->id), false, cfg);
 		if (mosq)
 		{
-			mosquitto_subscribe_callback_set(mosq, callback->subscribe_callback);
+			//mosquitto_subscribe_callback_set(mosq, callback->subscribe_callback);
 			mosquitto_connect_v5_callback_set(mosq, callback->connect_callback);
 			mosquitto_message_v5_callback_set(mosq, callback->message_callback);
 			if (cfg->debug)

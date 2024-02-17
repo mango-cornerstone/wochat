@@ -398,9 +398,11 @@ public:
 					{
 						if (eb->GetInputMessage(msgInput, len))
 						{
-							int r = GetCurrentPublicKey(lpData, mt->pubkey);
+							int r = GetReceiverPublicKey(lpData, mt->pubkey);
 							if (0 == r && (0x02 == mt->pubkey[0] || 0x03 == mt->pubkey[0])) // the first byte of public key is 02 or 03
 							{
+								mt->state = MESSAGE_TASK_STATE_NULL;
+								mt->next = nullptr;
 								mt->message = msgInput;
 								mt->msgLen = len;
 								mt->type = 'T'; // this is the text message

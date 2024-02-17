@@ -177,6 +177,21 @@ int wt_FillRandomData(U8* buf, U8 len)
 	return r;
 }
 
+U8 wt_GenRandomIntLessThan(U8 lessthan)
+{
+	U8 r = 0;
+	U8 x64[8] = { 0 };
+
+	if (0 == wt_FillRandomData(x64, 8))
+	{
+		U64* p64 = (U64*)x64;
+		if (lessthan)
+			r = *p64 % lessthan;
+	}
+
+	return r;
+}
+
 int wt_GenerateSecretKey(U8* sk)
 {
 	int r = 1;

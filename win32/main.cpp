@@ -48,7 +48,7 @@ static const U8* default_public_key  = (const U8*)"0288D216B2CEB02171FF4FD3392C2
 LONG 				g_threadCount = 0;
 LONG				g_Quit = 0;
 LONG                g_NetworkStatus = 0;
-
+LONG				g_dummyCount = 0;
 // private key and public key
 U8*                 g_SK = nullptr;
 U8*                 g_PK = nullptr;
@@ -367,22 +367,25 @@ public:
 	LRESULT OnSubMessage(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
 		int ret = 0;
-		MQTTSubData* pd = &g_SubData;
-		MessageTask* p;
 
-		EnterCriticalSection(&g_csMQTTSub);
-		p = pd->task;
-		while (p) // scan the link to find the message that has been processed
+		if (0 == wParam)
 		{
-			if (0 == p->state) // this task is not processed yet.
-				ret += m_win4.UpdateReceivedMessage(p);
-			p = p->next;
+			MQTTSubData* pd = &g_SubData;
+			MessageTask* p;
+
+			EnterCriticalSection(&g_csMQTTSub);
+			p = pd->task;
+			while (p) // scan the link to find the message that has been processed
+			{
+				if (MESSAGE_TASK_STATE_NULL == p->state) // this task is not processed yet.
+					ret += m_win4.UpdateReceivedMessage(p);
+				p = p->next;
+			}
+			LeaveCriticalSection(&g_csMQTTSub);
+
+			if (ret)
+				Invalidate();
 		}
-		LeaveCriticalSection(&g_csMQTTSub);
-
-		if (ret)
-			Invalidate();
-
 		return 0;
 	}
 
@@ -1055,7 +1058,7 @@ public:
 			}
 		}
 
-		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] drag: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, mdrag,
+		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] cnt: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, g_dummyCount,
 			m0,m1,m2,m3,m4,m5);
 		::SetWindowTextW(m_hWnd, (LPCWSTR)xtitle);
 
@@ -1554,7 +1557,8 @@ ExitThisApplication:
 	return 0;
 }
 
-int GetCurrentPublicKey(void* parent, U8* pk)
+// get the public key of the current receiver
+int GetReceiverPublicKey(void* parent, U8* pk)
 {
 	int r = 1;
 	XWindow* pThis = static_cast<XWindow*>(parent);

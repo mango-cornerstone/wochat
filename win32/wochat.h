@@ -12,16 +12,21 @@
 #include "secp256k1.h"
 #include "sqlite/sqlite3.h"
 
-extern LONG               g_threadCount;
-extern LONG               g_Quit;
-extern LONG               g_NetworkStatus;
+extern LONG g_threadCount;
+extern LONG g_Quit;
+extern LONG g_NetworkStatus;
+extern LONG	g_dummyCount;
+
+extern U8* g_SK;
+extern U8* g_PK;
+extern U8* g_PKTo;
+extern U8* g_MQTTPubClientId;
+extern U8* g_MQTTSubClientId;
 
 extern HANDLE             g_MQTTPubEvent;
 
 extern CRITICAL_SECTION    g_csMQTTSub;
 extern CRITICAL_SECTION    g_csMQTTPub;
-
-extern U8 g_PKText[67];
 
 extern ID2D1Factory* g_pD2DFactory;
 extern IDWriteFactory* g_pDWriteFactory;
@@ -36,14 +41,6 @@ extern IDWriteFactory* g_pDWriteFactory;
 #define WT_TEXTFORMAT_OTHER			7
 
 IDWriteTextFormat* GetTextFormat(U8 idx);
-
-extern U8* g_SK;
-extern U8* g_PK;
-extern U8* g_PKTo;
-extern U8* g_MQTTPubClientId;
-extern U8* g_MQTTSubClientId;
-
-//int GetKeys(LPCTSTR path, U8* sk, U8* pk);
 
 DWORD WINAPI MQTTSubThread(LPVOID lpData);
 DWORD WINAPI MQTTPubThread(LPVOID lpData);
@@ -62,6 +59,10 @@ typedef struct MQTTMessage
 	U32   msglen;
 	char* msgbody;
 } MQTTMessage;
+
+#define MESSAGE_TASK_STATE_NULL		0
+#define MESSAGE_TASK_STATE_ONE		1
+#define MESSAGE_TASK_STATE_COMPLETE	2
 
 // a message node in the message queue
 typedef struct MessageTask
@@ -136,11 +137,8 @@ typedef struct XChatGroup
 int InitWoChatDatabase(LPCWSTR lpszPath);
 
 int PushTaskIntoSendMessageQueue(MessageTask* message_task);
-int PushReceiveMessageQueue(MessageTask* message_task);
-
+//int PushTaskIntoReceiveMessageQueue(MessageTask* message_task);
 int GenPublicKeyFromSecretKey(U8* sk, U8* pk);
-int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key);
-
-int GetCurrentPublicKey(void* parent, U8* pk);
+int GetReceiverPublicKey(void* parent, U8* pk);
 
 #endif // __WT_WOCHAT_H__

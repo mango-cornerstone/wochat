@@ -8,6 +8,213 @@
 #include "secp256k1.h"
 #include "secp256k1_ecdh.h"
 
+typedef struct PublishTask
+{
+	PublishTask* next;
+	MessageTask* node;
+} PublishTask;
+
+static PublishTask* CloneInputMessageTasks(MemoryPoolContext mempool)
+{
+	PublishTask* pt = nullptr;
+	
+	EnterCriticalSection(&g_csMQTTPub);
+	if (g_PubData.task)
+	{
+		bool firstTime = true;
+		MessageTask* p;
+		PublishTask* item;
+		PublishTask* curr = nullptr;
+
+		p = g_PubData.task;
+		while (p)
+		{
+			if (p->state != MESSAGE_TASK_STATE_COMPLETE)
+			{
+				item = (PublishTask*)wt_palloc0(mempool, sizeof(PublishTask));
+				if (item)
+				{
+					item->node = p;
+					if (firstTime)
+					{
+						firstTime = false;
+						pt = item;
+						curr = item;
+					}
+					else
+					{
+						assert(curr);
+						curr->next = item;
+						curr = item;
+					}
+				}
+			}
+			p = p->next;
+		}
+	}
+	LeaveCriticalSection(&g_csMQTTPub);
+
+	return pt;
+}
+
+static int PushTaskIntoReceiveMessageQueue(MessageTask* task)
+{
+	int ret = 0;
+	MQTTSubData* pd = &g_SubData;
+	MessageTask* p;
+
+	EnterCriticalSection(&g_csMQTTSub);
+
+	while (pd->task) // scan the link to find the message that has been processed
+	{
+		p = pd->task->next;
+		if (MESSAGE_TASK_STATE_NULL == pd->task->state) // this task is not processed yet.
+		{
+			break;
+		}
+		wt_pfree(pd->task->message);
+		wt_pfree(pd->task);
+		pd->task = p;
+	}
+
+	if (nullptr == pd->task) // there is no task in the queue
+	{
+		pd->task = task;
+		LeaveCriticalSection(&g_csMQTTSub);
+		return 0;
+	}
+
+	p = pd->task;
+	while (p->next)
+		p = p->next;
+
+	p->next = task;
+	task->next = nullptr;
+
+	LeaveCriticalSection(&g_csMQTTSub);
+
+	return 0;
+}
+
+static int GetKeyFromSecretKeyAndPlubicKey(U8* sk, U8* pk, U8* key)
+{
+	int ret = 1;
+	secp256k1_context* ctx;
+	secp256k1_pubkey pubkey;
+	U8 K[32] = { 0 };
+
+	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+	if (ctx)
+	{
+		ret = secp256k1_ec_pubkey_parse(ctx, &pubkey, pk, 33);
+		if (1 != ret)
+		{
+			secp256k1_context_destroy(ctx);
+			ret = 1;
+			return ret;
+		}
+		ret = secp256k1_ecdh(ctx, K, &pubkey, sk, NULL, NULL);
+		if (ret && key)
+		{
+			for (int i = 0; i < 32; i++)
+				key[i] = K[i];
+		}
+
+		secp256k1_context_destroy(ctx);
+		ret = 0;
+	}
+	return ret;
+}
+
+static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, PublishTask* task)
+{
+	assert(task);
+	MessageTask* node = task->node;
+
+	if (node)
+	{
+		U8 offset = 0;
+		U8* message_raw;
+		U8* msssage_b64;
+		U32 length_raw;
+		U32 length_b64;
+
+		if (node->msgLen < 256)
+		{
+			length_raw = 256 + 40;
+			offset = (U8)(256 - node->msgLen);
+		}
+		else
+			length_raw = node->msgLen + 40;
+
+		message_raw = (U8*)wt_palloc(pool, length_raw);
+		if (message_raw)
+		{
+			U8 i, idx = 0;
+			U32 crc;
+			wt_chacha20_context cxt = { 0 };
+			U8 key[32] = { 0 };
+			U8 nonce[12] = { 0 };
+			U8 topic[67] = { 0 };
+
+			wt_sha256_hash(node->message, node->msgLen, message_raw); // generate the SHA256 hash of the original message
+			U32* p32 = (U32*)(message_raw + 32);
+			*p32 = node->msgLen;
+			U8* p = message_raw + 32 + 4;
+			*p++ = node->type;
+
+			if (offset) // the original message is less than 256 bytes
+			{
+				idx = wt_GenRandomIntLessThan(offset);
+				wt_FillRandomData(message_raw + 40, length_raw - 40);
+				*p = idx;
+			}
+			memcpy(message_raw + 40 + idx, node->message, node->msgLen);
+
+			INIT_CRC32C(crc);
+			COMP_CRC32C(crc, message_raw, 32);
+			FIN_CRC32C(crc);
+			p = (U8*)&crc;
+
+			for (i = 0; i < 4; i++)
+			{
+				message_raw[32 + i] ^= p[i];
+			}
+			for (i = 0; i < 4; i++)
+			{
+				message_raw[32 + 4 + i] ^= p[i];
+			}
+
+			GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, key);
+			wt_chacha20_init(&cxt);
+			wt_chacha20_setkey(&cxt, key);
+			for (i = 0; i < 12; i++) nonce[i] = i;
+			wt_chacha20_starts(&cxt, nonce, 0);
+			wt_chacha20_update(&cxt, length_raw, (const unsigned char*)message_raw, message_raw);  // encrypt the message!
+			wt_chacha20_free(&cxt);
+
+			length_b64 = wt_b64_enc_len(length_raw);
+			msssage_b64 = (U8*)wt_palloc(pool, 67 + length_b64 + 1); // zero terminated
+			if (msssage_b64)
+			{
+				wt_Raw2HexString(g_PK, 33, msssage_b64, nullptr);
+				msssage_b64[66] = '|';
+				wt_b64_encode((const char*)message_raw, length_raw, (char*)(msssage_b64 + 67), length_b64);
+				msssage_b64[length_b64 + 67] = '\0';
+
+				wt_Raw2HexString(node->pubkey, 33, topic, nullptr);
+				if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 67 + 1, msssage_b64, 1, false, NULL))
+				{
+					InterlockedIncrement(&(node->state)); // we have processed this task
+				}
+				wt_pfree(msssage_b64);
+			}
+			wt_pfree(message_raw);
+		}
+	}
+	return 0;
+}
+
 extern "C"
 {
 	static void MQTT_Message_Callback(struct mosquitto* mosq, void* obj, const struct mosquitto_message* message, const mosquitto_property* properties);
@@ -35,8 +242,8 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 	HWND hWndUI;
 	struct mosquitto* mosq = nullptr;
 	MemoryPoolContext mempool;
-	MessageTask* mt;
-	MessageTask* p;
+	PublishTask* task;
+	PublishTask* p;
 
 	InterlockedIncrement(&g_threadCount);
 	hWndUI = (HWND)(lpData);
@@ -59,92 +266,36 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 
 	while (true)
 	{
-		dwRet = WaitForSingleObject(g_MQTTPubEvent, 10000); // wakeup every 10 seconds
+		dwRet = WaitForSingleObject(g_MQTTPubEvent, 1000); // wakeup every 1 seconds
 
 		if (g_Quit) // we will quit the whole program
 			break;
 
-		if (WAIT_TIMEOUT == dwRet)
-		{
-			SendPingMessage(mosq); // send a ping message to check the network is good or not
-			continue;
-		}
-
-		if (dwRet != WAIT_OBJECT_0)
+		if ((dwRet != WAIT_OBJECT_0) && (dwRet != WAIT_TIMEOUT))
 			continue;
 
-		rc = mosquitto_connect_bind_v5(mosq, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, 60, NULL, NULL);
-		if (MOSQ_ERR_SUCCESS != rc)
+		task = CloneInputMessageTasks(mempool);
+		if (task) // we have the tasks in the queue that need to send out.
 		{
-			InterlockedExchange(&g_NetworkStatus, 0); // if we cannot connect, the network is not good
-			continue;
-		}
-
-		InterlockedExchange(&g_NetworkStatus, 1);
-
-		rc = mosquitto_publish_v5(mosq, NULL, (const char*)"WOCHAT", 6, "HelloX", 1, false, NULL);
-
-		mosquitto_disconnect_v5(mosq, 0, NULL);
-#if 0
-		mt = CloneInputMessageTask(mempool); // we clone the message queue so that we do not block the UI thread too long time
-		p = mt;
-		while (p)
-		{
-			msglen = p->msgLen * sizeof(wchar_t);
-			output_len = wt_b64_enc_len(msglen + 4 + 32) + 1;
-			msgbody = (U8*)wt_palloc(mempool, 67 + output_len);
-
-			if (msgbody)
+			rc = mosquitto_connect_bind_v5(mosq, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, 60, NULL, NULL);
+			if (MOSQ_ERR_SUCCESS != rc)
 			{
-				U8* MSG = (U8*)wt_palloc(mempool, msglen + 4 + 32);
-				if (MSG)
-				{
-					wt_Raw2HexString(p->pubkey, 33, (U8*)topic, nullptr);
-					wt_Raw2HexString(g_PK, 33, msgbody, nullptr);
-					msgbody[66] = '|';
-
-					U32* pLen = (U32*)(MSG);
-					*pLen = (U32)msglen;
-
-					{
-						wt_sha256_ctx ctx = { 0 };
-						wt_sha256_init(&ctx);
-						wt_sha256_update(&ctx, (const unsigned char*)p->message, msglen);
-						wt_sha256_final(&ctx, MSG + 4);
-					}
-
-					{
-						int m;
-						U8 Key[32] = { 0 };
-						U8 nonce[12];
-						GetKeyFromSKAndPK(g_SK, p->pubkey, Key);
-						wt_chacha20_context cxt;
-						wt_chacha20_init(&cxt);
-						m = wt_chacha20_setkey(&cxt, Key);
-						for (int i = 0; i < 12; i++)
-							nonce[i] = i;
-						m = wt_chacha20_starts(&cxt, nonce, 0);
-						m = wt_chacha20_update(&cxt, 4 + 32, (const unsigned char*)MSG, MSG);
-						m = wt_chacha20_update(&cxt, msglen, (const unsigned char*)p->message, MSG + 4 + 32);
-						wt_chacha20_free(&cxt);
-					}
-					wt_b64_encode((const char*)MSG, (msglen + 4 + 32), (char*)msgbody + 67, output_len);
-					msgbody[67 + output_len - 1] = 0; // zero-terminiated
-					wt_pfree(MSG);
-				}
-
-				MQTT::MQTT_PubMessage(mq, topic, (char*)msgbody, 67 + output_len);
-				InterlockedIncrement(&(p->state)); // we have processed this task.
-
-				wt_pfree(msgbody);
-				msgbody = nullptr;
+				InterlockedExchange(&g_NetworkStatus, 0); // if we cannot connect, the network is not good
+				wt_mempool_reset(mempool); // clean up the memory pool
+				continue;
 			}
-			p = p->next;
-		}
 
-		UpdateInputMessageTask(mt); // update the input message queue
-		wt_mempool_reset(mempool); // release all memory in this memory pool
-#endif
+			InterlockedExchange(&g_NetworkStatus, 1); // the network is good
+
+			p = task;
+			while (p)
+			{
+				SendOutPushlishTask(mosq, mempool, p);
+				p = p->next;
+			}
+			mosquitto_disconnect_v5(mosq, 0, NULL);
+			wt_mempool_reset(mempool); // clean up the memory pool
+		}
 	}
 
 QuitMQTTPubThread:
@@ -211,8 +362,13 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 			if (g_Quit)
 				break;
 			ret = mosquitto_loop(mosq, -1, 1);
-			if (ret != MOSQ_ERR_SUCCESS)
-				break;
+			if (ret == MOSQ_ERR_SUCCESS)
+			{
+				InterlockedExchange(&g_NetworkStatus, 1);
+				continue;
+			}
+			InterlockedExchange(&g_NetworkStatus, 0);
+			break;
 		}
 
 		if (g_Quit)
@@ -221,6 +377,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		do 
 		{
 			ret = mosquitto_reconnect(mosq);
+			InterlockedExchange(&g_NetworkStatus, 0);
 		} while (0 == g_Quit && ret != MOSQ_ERR_SUCCESS);
 
 		if (g_Quit)
@@ -241,63 +398,109 @@ QuitMQTTSubThread:
 	return 0;
 }
 
-static int SendPingMessage(struct mosquitto* mq)
-{
-	int r = 1;
-	return 0;
-}
-
-static void UpdateInputMessageTask(MessageTask* mt)
-{
-
-}
-
-static MessageTask* CloneInputMessageTask(MemoryPoolContext mempool)
-{
-	MessageTask* mt = nullptr;
-	
-	EnterCriticalSection(&g_csMQTTPub);
-	if (g_PubData.task)
-	{
-		MessageTask* p;
-		MessageTask* q;
-		MessageTask* t;
-
-		p = g_PubData.task;
-		mt = (MessageTask*)wt_palloc0(mempool, sizeof(MessageTask));
-		if (!mt)
-		{
-			LeaveCriticalSection(&g_csMQTTPub);
-			return nullptr;
-		}
-		memcpy(mt, p, sizeof(MessageTask)); // clone a node
-		mt->message = p->message;
-		mt->next = nullptr;
-		q = mt;
-
-		p = g_PubData.task->next;
-		while (p)
-		{
-			t = (MessageTask*)wt_palloc0(mempool, sizeof(MessageTask));
-			if (!t)
-				break;
-			memcpy(t, p, sizeof(MessageTask)); // clone a node
-			t->message = p->message;
-			t->next = nullptr;
-			q->next = t;
-			q = t;
-			p = p->next;
-		}
-	}
-	
-	LeaveCriticalSection(&g_csMQTTPub);
-
-	return mt;
-}
-
-
 extern "C"
 {
+	static void MQTT_Message_Callback(struct mosquitto* mosq, void* obj, const struct mosquitto_message* message, const mosquitto_property* properties)
+	{
+		HWND hWndUI;
+		MemoryPoolContext pool;
+		U8* message_raw;
+		U8* msssage_b64;
+		U32 length_raw;
+		U32 length_b64;
+
+		MQTTConf* conf = (MQTTConf*)obj;
+		assert(conf);
+		pool = conf->ctxThread;
+		assert(pool);
+
+		UNUSED(properties);
+
+		hWndUI = (HWND)conf->hWnd;
+		assert(::IsWindow(hWndUI));
+
+		msssage_b64 = (U8*)message->payload;
+		length_b64 = (U32)message->payloadlen;
+
+		// do some pre-check at first 
+		if (length_b64 < 464)
+			return;
+		if (msssage_b64[length_b64 - 1]) // the last byte is alway 0. 
+			return; 
+		if (msssage_b64[66] != '|' && msssage_b64[66] != '+' && msssage_b64[66] != '-') // the 67th bytes is spearated character
+			return;
+		if (!wt_IsPublicKey(msssage_b64, 66))
+			return;
+
+		length_raw = wt_b64_dec_len(length_b64 - 67 - 1);
+		message_raw = (U8*)wt_palloc(pool, length_raw);
+		if (message_raw)
+		{
+			U8 i, type, offset;
+			U8* p;
+			U32 crc, length;
+			MessageTask* task;
+			U8 pubkey[33] = { 0 };
+			U8 key[32] = { 0 };
+			U8 nonce[12] = { 0 };
+			U8 hash[32] = { 0 };
+			wt_chacha20_context cxt = { 0 };
+
+			int rc = wt_b64_decode((const char*)msssage_b64 + 67, length_b64 - 67 - 1, (char*)message_raw, length_raw);
+
+			wt_HexString2Raw(msssage_b64, 66, pubkey, nullptr);
+			GetKeyFromSecretKeyAndPlubicKey(g_SK, pubkey, key);
+			wt_chacha20_init(&cxt);
+			wt_chacha20_setkey(&cxt, key);
+			for (i = 0; i < 12; i++) nonce[i] = i;
+			wt_chacha20_starts(&cxt, nonce, 0);
+			wt_chacha20_update(&cxt, length_raw, (const unsigned char*)message_raw, message_raw);  // decrypt the message!
+			wt_chacha20_free(&cxt);
+
+			INIT_CRC32C(crc);
+			COMP_CRC32C(crc, message_raw, 32);
+			FIN_CRC32C(crc);
+			p = (U8*)&crc;
+
+			for (i = 0; i < 4; i++)
+			{
+				message_raw[32 + i] ^= p[i];
+			}
+			for (i = 0; i < 4; i++)
+			{
+				message_raw[32 + 4 + i] ^= p[i];
+			}
+
+			length = *((U32*)(message_raw + 32));
+			type = *(message_raw + 32 + 4);
+			offset = *(message_raw + 32 + 4 + 1);
+			p = message_raw + 40 + offset; // now p is pointing to the real message
+			wt_sha256_hash(p, length, hash);
+			if (0 == memcmp(hash, message_raw, 32))
+			{
+				task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
+				if (task)
+				{
+					memcpy(task->pubkey, pubkey, 33);
+					memcpy(task->hash, hash, 32);
+					task->type = type;
+					task->msgLen = length;
+					task->message = (U8*)wt_palloc(pool, length);
+					if (task->message)
+					{
+						memcpy(task->message, p, length);
+						PushTaskIntoReceiveMessageQueue(task);
+						::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+					}
+					else
+						wt_pfree(task);
+				}
+			}
+			wt_pfree(message_raw);
+		}
+	}
+
+#if 0
 	static bool process_messages = true;
 	static int msg_count = 0;
 	static int last_mid = 0;
@@ -315,7 +518,7 @@ extern "C"
 			wt_pfree(mt);
 		}
 	}
-#if 0
+
 	static MessageTask* ProcessIncomingMessage(MQTTPrivateData* pd, bool KeepAlive, U8* raw_message, U32 message_length)
 	{
 		MessageTask* mt = nullptr;
@@ -420,69 +623,9 @@ extern "C"
 		return 0;
 	}
 #endif
-	static void MQTT_Message_Callback(struct mosquitto* mosq, void* obj, const struct mosquitto_message* message, const mosquitto_property* properties)
-	{
-		int i;
-		HWND hWndUI;
-		char* msgbody;
-		int msglen;
-		MQTTConf* conf = (MQTTConf*)obj;
-		assert(conf);
-
-		UNUSED(properties);
-
-		hWndUI = (HWND)conf->hWnd;
-		assert(::IsWindow(hWndUI));
-
-		msgbody = (char*)message->payload;
-		msglen = message->payloadlen;
-
-#if 0
-		if (conf->retained_only && !message->retain && process_messages)
-		{
-			process_messages = false;
-			if (last_mid == 0)
-			{
-				mosquitto_disconnect_v5(mosq, 0, conf->disconnect_props);
-			}
-			return;
-		}
-
-		if (message->retain && conf->no_retain)
-			return;
-
-		if (conf->filter_outs)
-		{
-			for (i = 0; i < conf->filter_out_count; i++)
-			{
-				mosquitto_topic_matches_sub(conf->filter_outs[i], message->topic, &res);
-				if (res) return;
-			}
-		}
-
-		if (conf->remove_retained && message->retain)
-		{
-			mosquitto_publish(mosq, &last_mid, message->topic, 0, NULL, 1, true);
-		}
-
-		if (conf->msg_count > 0)
-		{
-			msg_count++;
-			if (conf->msg_count == msg_count)
-			{
-				process_messages = false;
-				if (last_mid == 0)
-				{
-					mosquitto_disconnect_v5(mosq, 0, conf->disconnect_props);
-				}
-			}
-		}
-#endif
-	}
 
 	static void MQTT_Connect_Callback(struct mosquitto* mosq, void* obj, int result, int flags, const mosquitto_property* properties)
 	{
-		int i;
 		MQTTConf* conf = (MQTTConf*)obj;
 		assert(conf);
 
@@ -491,89 +634,28 @@ extern "C"
 
 		if (!result)
 		{
-			if (conf->topic_count > 0)
+			if (!conf->pub_or_sub)
 			{
-				mosquitto_subscribe_multiple(mosq, NULL, conf->topic_count, conf->topics, conf->qos, conf->sub_opts, conf->subscribe_props);
+				if (conf->topic_count > 0)
+					mosquitto_subscribe_multiple(mosq, NULL, conf->topic_count, conf->topics, conf->qos, conf->sub_opts, conf->subscribe_props);
 			}
-#if 0
-			for (i = 0; i < conf->unsub_topic_count; i++)
-			{
-				mosquitto_unsubscribe_v5(mosq, NULL, conf->unsub_topics[i], conf->unsubscribe_props);
-			}
-#endif 
-		}
-		else
-		{
-			if (result)
-			{
-				if (conf->protocol_version == MQTT_PROTOCOL_V5)
-				{
-					if (result == MQTT_RC_UNSUPPORTED_PROTOCOL_VERSION)
-					{
-						//err_printf(&cfg, "Connection error: %s. Try connecting to an MQTT v5 broker, or use MQTT v3.x mode.\n", mosquitto_reason_string(result));
-					}
-					else
-					{
-						//err_printf(&cfg, "Connection error: %s\n", mosquitto_reason_string(result));
-					}
-				}
-				else {
-					//err_printf(&cfg, "Connection error: %s\n", mosquitto_connack_string(result));
-				}
-			}
-			mosquitto_disconnect_v5(mosq, 0, conf->disconnect_props);
 		}
 	}
 
 	static void MQTT_Disconnect_Callback(struct mosquitto* mosq, void* obj, int result, const mosquitto_property* properties)
 	{
-
 	}
 
 	static void MQTT_Publish_Callback(struct mosquitto* mosq, void* obj, int mid, int reason_code, const mosquitto_property* properties)
 	{
-
 	}
 
 	static void MQTT_Subscribe_Callback(struct mosquitto* mosq, void* obj, int mid, int qos_count, const int* granted_qos)
 	{
-#if 0
-		int i;
-		struct mosq_config* conf;
-		bool some_sub_allowed = (granted_qos[0] < 128);
-		bool should_print;
-
-		conf = (struct mosq_config*)obj;
-		assert(nullptr != conf);
-		should_print = conf->debug && !conf->quiet;
-
-#if 0
-		if (should_print)
-			printf("Subscribed (mid: %d): %d", mid, granted_qos[0]);
-#endif
-		for (i = 1; i < qos_count; i++)
-		{
-			//if (should_print) printf(", %d", granted_qos[i]);
-			some_sub_allowed |= (granted_qos[i] < 128);
-		}
-		//if (should_print) printf("\n");
-
-		if (some_sub_allowed == false)
-		{
-			mosquitto_disconnect_v5(mosq, 0, conf->disconnect_props);
-			//err_printf(&cfg, "All subscription requests were denied.\n");
-		}
-
-		if (conf->exit_after_sub)
-		{
-			mosquitto_disconnect_v5(mosq, 0, conf->disconnect_props);
-		}
-#endif
 	}
 
 	static void MQTT_Log_Callback(struct mosquitto* mosq, void* obj, int level, const char* str)
 	{
-
 	}
 }
 
@@ -685,35 +767,6 @@ InitWoChatDatabase(g_AppPath);
 }
 #endif
 
-int GetKeyFromSKAndPK(U8* sk, U8* pk, U8* key)
-{
-	int ret = 1;
-	secp256k1_context* ctx;
-	secp256k1_pubkey pubkey;
-	U8 K[32] = { 0 };
-
-	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
-	if (ctx)
-	{
-		ret = secp256k1_ec_pubkey_parse(ctx, &pubkey, pk, 33);
-		if (1 != ret)
-		{
-			secp256k1_context_destroy(ctx);
-			ret = 1;
-			return ret;
-		}
-		ret = secp256k1_ecdh(ctx, K, &pubkey, sk, NULL, NULL);
-		if (ret && key)
-		{
-			for (int i = 0; i < 32; i++)
-				key[i] = K[i];
-		}
-
-		secp256k1_context_destroy(ctx);
-		ret = 0;
-	}
-	return ret;
-}
 
 // we have the 32-byte secret key, we want to generate the public key, return 0 if successful
 int GenPublicKeyFromSecretKey(U8* sk, U8* pk)
@@ -743,44 +796,6 @@ int GenPublicKeyFromSecretKey(U8* sk, U8* pk)
 	return ret;
 }
 
-int PushReceiveMessageQueue(MessageTask* message_task)
-{
-	int ret = 0;
-	MQTTSubData* pd = &g_SubData;
-	MessageTask* p;
-
-	EnterCriticalSection(&g_csMQTTSub);
-
-	while (pd->task) // scan the link to find the message that has been processed
-	{
-		p = pd->task->next;
-		if (0 == pd->task->state) // this task is not processed yet.
-		{
-			break;
-		}
-		wt_pfree(pd->task->message);
-		wt_pfree(pd->task);
-		pd->task = p;
-	}
-
-	if (nullptr == pd->task) // there is no task in the queue
-	{
-		pd->task = message_task;
-		LeaveCriticalSection(&g_csMQTTSub);
-		return 0;
-	}
-	assert(pd->task);
-	p = pd->task;
-	while (p->next)
-		p = p->next;
-
-	p->next = message_task;
-	message_task->next = nullptr;
-
-	LeaveCriticalSection(&g_csMQTTSub);
-
-	return 0;
-}
 
 // put a message node into the send message queue
 int PushTaskIntoSendMessageQueue(MessageTask* mt)
@@ -790,6 +805,8 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 
 	if (mt)
 	{
+		bool hooked = false;
+
 		EnterCriticalSection(&g_csMQTTPub);
 		if (nullptr == g_PubData.task) // there is no task in the queue
 		{
@@ -799,32 +816,33 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 			return 0;
 		}
 
-		q = g_PubData.task;
+		q = g_PubData.task; // the first node in this queue
 		p = g_PubData.task;
 
 		while (p) // try to find the first node that is not processed yet
 		{
-			if (p->state < 2) // this task is not processed
-			{
+			if (p->state < MESSAGE_TASK_STATE_COMPLETE) // this task is not processed
 				break;
-			}
 			p = p->next;
 		}
-		g_PubData.task = p;
-		// here, g_PubData.task is pointing to a node not procesded or NULL
-		if (nullptr == g_PubData.task) // there is no task in the queue
+
+		g_PubData.task = p;  // here, g_PubData.task is pointing to a node not procesded or NULL
+		if (nullptr == g_PubData.task) // there is no not-processed task in the queue
 		{
 			g_PubData.task = mt;
 		}
 
-		p = q; // p is pointing to the first node
+		p = q; // p is pointing to the first node of the queue
 		while (p)
 		{
 			q = p->next;
-			if (nullptr == q) // we reach the end of the queue
+			if (nullptr == q && !hooked) // we reach the end of the queue, put the new node at the end of the queue
+			{
 				p->next = mt;
+				hooked = true;
+			}
 
-			if (p->state > 1) // this task has been processed, we can free the memory
+			if (p->state == MESSAGE_TASK_STATE_COMPLETE) // this task has been processed, we can free the memory
 			{
 				wt_pfree(p->message);
 				wt_pfree(p);

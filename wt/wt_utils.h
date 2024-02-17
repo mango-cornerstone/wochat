@@ -40,6 +40,8 @@ bool wt_IsHexString(U8* str, U8 len);
 
 bool wt_IsAlphabetString(U8* str, U8 len);
 
+U8 wt_GenRandomIntLessThan(U8 lessthan);
+
 #ifdef __cplusplus
 }
 #endif
