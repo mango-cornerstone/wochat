@@ -4,6 +4,7 @@
 #include "dui/dui_win.h"
 class XWindow0 : public XWindowT <XWindow0>
 {
+	bool m_networkIsGood = false;
 public:
 	XWindow0()
 	{
@@ -17,7 +18,7 @@ public:
 	void UpdateControlPosition()
 	{
 		int sw, sh, dx, dy, T;
-		int gap = 10; // pixel
+		int gap = 8; // pixel
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		XControl* xctl;
@@ -35,7 +36,7 @@ public:
 		assert(nullptr != xctl);
 		sw = xctl->getWidth();
 		sh = xctl->getHeight();
-		dy = T - gap - sh;
+		dy = T - (gap>>1) - sh;
 		dx = (w - sw) >> 1;
 		xctl->setPosition(dx, dy);
 	}
@@ -91,7 +92,7 @@ private:
 
 		w = 13; h = 13;
 		id = XWIN0_BITMAP_NETWORKN;  bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpNetWorkN;  bmp->w = w; bmp->h = h;
-		id = XWIN0_BITMAP_NETWORKH;  bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpNetWorkN;  bmp->w = w; bmp->h = h;
+		id = XWIN0_BITMAP_NETWORKH;  bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpNetWorkH;  bmp->w = w; bmp->h = h;
 		id = XWIN0_BITMAP_NETWORKP;  bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpNetWorkN;  bmp->w = w; bmp->h = h;
 		id = XWIN0_BITMAP_NETWORKA;  bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpNetWorkN;  bmp->w = w; bmp->h = h;
 	}
@@ -300,10 +301,22 @@ public:
 			button = new(mem)XButton;
 			assert(nullptr != button);
 			button->Init(id, "W0NETWORK");
-			bmpN = &m_bitmapArray[XWIN0_BITMAP_NETWORKN];
-			bmpH = &m_bitmapArray[XWIN0_BITMAP_NETWORKH];
-			bmpP = &m_bitmapArray[XWIN0_BITMAP_NETWORKP];
-			bmpA = &m_bitmapArray[XWIN0_BITMAP_NETWORKA];
+			if (g_NetworkStatus)
+			{
+				m_networkIsGood = true;
+				bmpN = &m_bitmapArray[XWIN0_BITMAP_NETWORKN];
+				bmpH = &m_bitmapArray[XWIN0_BITMAP_NETWORKN];
+				bmpP = &m_bitmapArray[XWIN0_BITMAP_NETWORKN];
+				bmpA = &m_bitmapArray[XWIN0_BITMAP_NETWORKN];
+			}
+			else
+			{
+				m_networkIsGood = false;
+				bmpN = &m_bitmapArray[XWIN0_BITMAP_NETWORKH];
+				bmpH = &m_bitmapArray[XWIN0_BITMAP_NETWORKH];
+				bmpP = &m_bitmapArray[XWIN0_BITMAP_NETWORKH];
+				bmpA = &m_bitmapArray[XWIN0_BITMAP_NETWORKH];
+			}
 			button->setBitmap(bmpN, bmpH, bmpP, bmpA);
 			sw = button->getWidth(); sh = button->getHeight();
 			left = (w - sw) >> 1;
@@ -315,6 +328,33 @@ public:
 			m_controlArray[id] = button;
 		}
 		m_maxControl = 9;
+	}
+
+	int Do_DUI_TIMER(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
+	{ 
+		int r = 0;
+		bool isNetworkGood = g_NetworkStatus; // take a snapshot of this global variable
+
+		if (isNetworkGood)
+		{
+			if (!m_networkIsGood)
+				r++;
+		}
+		else
+		{
+			if (m_networkIsGood)
+				r++;
+		}
+		m_networkIsGood = isNetworkGood;
+
+		if (r)
+		{
+			XButton* btn = (XButton*)m_controlArray[XWIN0_BUTTON_NETWORK];
+			XBitmap* bmp = m_networkIsGood? &m_bitmapArray[XWIN0_BITMAP_NETWORKN] : &m_bitmapArray[XWIN0_BITMAP_NETWORKH];
+			btn->setBitmap(bmp, bmp, bmp, bmp);
+		}
+
+		return r; 
 	}
 };
 

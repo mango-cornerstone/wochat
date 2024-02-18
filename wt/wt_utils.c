@@ -168,11 +168,26 @@ bool wt_IsPublicKey(U8* str, const U8 len)
 int wt_FillRandomData(U8* buf, U8 len)
 {
 	int r = 1;
-	if (buf)
+	if (buf && len)
 	{
 		NTSTATUS status = BCryptGenRandom(NULL, buf, len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
 		if (STATUS_SUCCESS == status)
+		{
+			if (len == 2)
+			{
+				U8* p = buf;
+				for (U8 k = 0; k < 255; k++)
+				{
+					if (p[0] && p[1] && (p[0] != p[1])) // we need both are none-zero and not equal
+					{
+						break;
+					}
+					status = BCryptGenRandom(NULL, buf, len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+					p = buf;
+				}
+			}
 			r = 0;
+		}
 	}
 	return r;
 }
@@ -184,9 +199,9 @@ U8 wt_GenRandomIntLessThan(U8 lessthan)
 
 	if (0 == wt_FillRandomData(x64, 8))
 	{
-		U64* p64 = (U64*)x64;
+		U64 p64 = *((U64*)x64);
 		if (lessthan)
-			r = *p64 % lessthan;
+			r = p64 % lessthan;
 	}
 
 	return r;

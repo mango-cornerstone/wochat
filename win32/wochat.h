@@ -12,10 +12,11 @@
 #include "secp256k1.h"
 #include "sqlite/sqlite3.h"
 
-extern LONG g_threadCount;
-extern LONG g_Quit;
-extern LONG g_NetworkStatus;
-extern LONG	g_dummyCount;
+extern LONG  g_threadCount;
+extern LONG  g_Quit;
+extern LONG  g_NetworkStatus;
+extern DWORD g_dwMainThreadID;
+extern U32	 g_messageSequence;
 
 extern U8* g_SK;
 extern U8* g_PK;
@@ -48,17 +49,11 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData);
 #define WM_MQTT_PUBMESSAGE		(WM_USER + 300)
 #define WM_MQTT_SUBMESSAGE		(WM_USER + 301)
 
+#define WM_WIN_MAINUITHREAD		(WM_USER + 400)
+#define WM_WIN_SCREENTHREAD		(WM_USER + 401)
+
 #define WIN4_GET_PUBLICKEY		1
 #define WIN4_UPDATE_MESSAGE		2
-
-typedef struct MQTTMessage
-{
-	MQTTMessage* next;
-	U8    processed;
-	char* topic;
-	U32   msglen;
-	char* msgbody;
-} MQTTMessage;
 
 #define MESSAGE_TASK_STATE_NULL		0
 #define MESSAGE_TASK_STATE_ONE		1
@@ -72,7 +67,7 @@ typedef struct MessageTask
 	U8   pubkey[33];
 	U8   type;
 	U8   hash[32]; // the SHA256 hash value of this node
-	U8*  message;
+	U8*  message;  // the first 4 bytes is a sequnce number to be sure that the same text has different SHA256 value
 	U32  msgLen;
 } MessageTask;
 
@@ -123,11 +118,12 @@ typedef struct XChatGroup
 	U8   h;			    // the height in pixel of this icon
 	U16  width;		    // in pixel
 	U16  height;		// in pixel
-	U16  unread;		// how many unread messages? if more than 254, use ... 
+	U32  total;         // total messages in this group
+	U32  unread;		// how many unread messages? if more than 254, use ... 
 	U16  member;		// how many members in this group?
 	wchar_t* name;		// the group name
 	U64  ts;			// the time stamp. 
-	wchar_t* tsText;	// the group name
+	wchar_t* tsText;	// the text of time stamp
 	wchar_t* lastmsg;	// the last message of this group
 	XChatMessage* headMessage;
 	XChatMessage* tailMessage;

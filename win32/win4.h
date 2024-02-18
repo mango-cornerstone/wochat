@@ -43,13 +43,67 @@ public:
 		return r;
 	}
 
+	int ReLayoutText(int width, int height)
+	{
+		int r = 0;
+		if (width && m_chatGroup)
+		{
+			m_sizeAll.cy = 0;
+			XChatMessage* p = m_chatGroup->headMessage;
+			while (nullptr != p)
+			{
+				{  // determine the height of the text layout
+					IDWriteTextLayout* pTextLayout = nullptr;
+					IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+					FLOAT Wf = static_cast<FLOAT>(width * 2 / 3); // the text width is half of the window
+					g_pDWriteFactory->CreateTextLayout(
+						p->message,
+						p->msgLen,
+						pTextFormat,
+						Wf,
+						static_cast<FLOAT>(1),
+						(IDWriteTextLayout**)(&pTextLayout));
+
+					if (pTextLayout)
+					{
+						pTextLayout->GetMetrics(&(p->tm));
+						p->height = static_cast<int>(p->tm.height) + 1 + WIN4_GAP_MESSAGE;
+						p->width = static_cast<int>(p->tm.width) + 1;
+						
+						m_sizeAll.cy += p->height;
+					}
+					SafeRelease(&pTextLayout);
+				}
+				p = p->next;
+			}
+			m_ptOffset.y = (m_sizeAll.cy > height) ? (m_sizeAll.cy - height) : 0;
+
+			r++;
+		}
+		return r;
+	}
+
 	int SetChatGroup(XChatGroup* cg)
 	{
 		int r = 0;
+		int w = m_area.right - m_area.left;
+		int h = m_area.bottom - m_area.top;
 		assert(nullptr != cg);
 
 		XChatGroup* prev = m_chatGroup;
 		m_chatGroup = cg;
+
+		if (0 == cg->width)
+		{
+			cg->width = w;
+			ReLayoutText(w, h);
+		}
+		else if(cg->width != w)
+		{
+			cg->width = w;
+			ReLayoutText(w, h);
+		}
+
 		if (prev != m_chatGroup)
 		{
 			m_status |= DUI_STATUS_NEEDRAW;
@@ -57,6 +111,22 @@ public:
 			r++;
 		}
 		return r;
+	}
+
+	void UpdateControlPosition() // the user has changed the width of this window
+	{
+		int w = m_area.right - m_area.left;
+		int h = m_area.bottom - m_area.top;
+		if (0 == m_chatGroup->width)
+		{
+			m_chatGroup->width = w;
+			ReLayoutText(w, h);
+		}
+		else if (m_chatGroup->width != w)
+		{
+			m_chatGroup->width = w;
+			ReLayoutText(w, h);
+		}
 	}
 
 	int Do_DUI_CREATE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
@@ -114,15 +184,15 @@ public:
 			if (nullptr == p)
 				return 0;
 
-			p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, mt->msgLen);
+			p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, mt->msgLen - 4); // get rid of the first 4 bytes
 			if (nullptr == p->message)
 			{
 				wt_pfree(p);
 				return 0;
 			}
 
-			p->msgLen = mt->msgLen / sizeof(wchar_t);
-			text = (wchar_t*)mt->message;
+			p->msgLen = (mt->msgLen - 4)/ sizeof(wchar_t);
+			text = (wchar_t*)(mt->message + 4);
 			for (U16 i = 0; i < p->msgLen; i++) // copy the text message
 				p->message[i] = text[i];
 
@@ -219,15 +289,15 @@ public:
 			if (nullptr == p)
 				return 0;
 
-			p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, mt->msgLen);
+			p->message = (wchar_t*)wt_palloc(m_chatGroup->mempool, mt->msgLen - 4);
 			if (nullptr == p->message)
 			{
 				wt_pfree(p);
 				return 0;
 			}
 
-			p->msgLen = mt->msgLen / sizeof(wchar_t);
-			text = (wchar_t*)mt->message;
+			p->msgLen = (mt->msgLen - 4)/ sizeof(wchar_t);
+			text = (wchar_t*)(mt->message + 4);
 			for (U16 i = 0; i < p->msgLen; i++) // copy the text message
 				p->message[i] = text[i];
 

@@ -699,24 +699,16 @@ public:
                 {
                     U32 statusOld = m_status;
                     m_status &= (~DUI_STATUS_VSCROLL); // let the vertical bar to disappear at first
-                    if (xPos >= (m_area.right - m_scrollWidth)) // the mouse is in the right vertical bar area
+                    if (m_sizeAll.cy > h)   // the total page size is greater than the real window size, we need to show the vertical bar
                     {
-                        if (m_sizeAll.cy > h)   // the total page size is greater than the real window size, we need to show the vertical bar
-                        {
-                            int thumb_start = (m_ptOffset.y * h) / m_sizeAll.cy; // the position of the thumb relative to m_area
-                            int thumb_height = (h * h) / m_sizeAll.cy;  // the thumb height, the bigger m_sizeAll.cy, the smaller of thumb height
-                            if (thumb_height < DUI_MINIMAL_THUMB_SIZE)
-                                thumb_height = DUI_MINIMAL_THUMB_SIZE; // we keep the thumb mini size to some pixels
-                            m_status |= DUI_STATUS_VSCROLL; // show vertical bar
-                            assert(m_ptOffset.y >= 0);
-                            assert(m_ptOffset.y <= m_sizeAll.cy - h);  // the range of m_ptOffset.y is from 0 to m_sizeAll.cy - h
-                            if ((statusOld & DUI_STATUS_VSCROLL) != DUI_STATUS_VSCROLL)
-                                r++;
-                        }
-                    }
-                    else // we should not show the vertical bar in this case
-                    {
-                        if ((statusOld & DUI_STATUS_VSCROLL) == DUI_STATUS_VSCROLL)
+                        int thumb_start = (m_ptOffset.y * h) / m_sizeAll.cy; // the position of the thumb relative to m_area
+                        int thumb_height = (h * h) / m_sizeAll.cy;  // the thumb height, the bigger m_sizeAll.cy, the smaller of thumb height
+                        if (thumb_height < DUI_MINIMAL_THUMB_SIZE)
+                            thumb_height = DUI_MINIMAL_THUMB_SIZE; // we keep the thumb mini size to some pixels
+                        m_status |= DUI_STATUS_VSCROLL; // show vertical bar
+                        assert(m_ptOffset.y >= 0);
+                        assert(m_ptOffset.y <= m_sizeAll.cy - h);  // the range of m_ptOffset.y is from 0 to m_sizeAll.cy - h
+                        if ((statusOld & DUI_STATUS_VSCROLL) != DUI_STATUS_VSCROLL)
                             r++;
                     }
                 }
@@ -845,6 +837,13 @@ public:
             assert(nullptr != xctl);
             assert(xctl->m_Id == i);
             r += xctl->DoMouseLBClickDown(dx, dy, &idxActive);
+        }
+
+        if (idxActive >= 0)
+        {
+            assert(idxActive < m_maxControl);
+            xctl = m_controlArray[idxActive];
+            xctl->pfAction(this, m_message, 0, (LPARAM)idxActive);
         }
 
         if (DUI_PROP_MOVEWIN & m_property)
@@ -1108,15 +1107,19 @@ public:
                 assert(xctl->m_Id == i);
                 r += xctl->OnTimer();
             }
+        }
 
+        {
             T* pT = static_cast<T*>(this);
             r += pT->Do_DUI_TIMER(uMsg, wParam, lParam, lpData);
-            if (r)
-            {
-                m_status |= DUI_STATUS_NEEDRAW;
-                InvalidateDUIWindow();
-            }
         }
+
+        if (r)
+        {
+            m_status |= DUI_STATUS_NEEDRAW;
+            InvalidateDUIWindow();
+        }
+
         return r;
     }
 

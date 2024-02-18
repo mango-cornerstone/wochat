@@ -34,6 +34,7 @@
 #include "win3.h"
 #include "win4.h"
 #include "win5.h"
+#include "winscreen.h"
 
 #if _DEBUG
 static const U8* default_private_key = (const U8*)"E3589E51A04EAB9343E2AD073890A1A2C1B172167D486C38045D88C6FD20CBBC";
@@ -48,7 +49,9 @@ static const U8* default_public_key  = (const U8*)"0288D216B2CEB02171FF4FD3392C2
 LONG 				g_threadCount = 0;
 LONG				g_Quit = 0;
 LONG                g_NetworkStatus = 0;
-LONG				g_dummyCount = 0;
+DWORD               g_dwMainThreadID  = 0;
+U32  				g_messageSequence = 0;
+
 // private key and public key
 U8*                 g_SK = nullptr;
 U8*                 g_PK = nullptr;
@@ -218,6 +221,7 @@ public:
 		MESSAGE_HANDLER(WM_PAINT, OnPaint)
 		MESSAGE_HANDLER(WM_TIMER, OnTimer)
 		MESSAGE_HANDLER(WM_MQTT_SUBMESSAGE, OnSubMessage)
+		MESSAGE_HANDLER(WM_MQTT_PUBMESSAGE, OnPubMessage)
 		MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
 		MESSAGE_HANDLER(WM_MOUSELEAVE, OnMouseLeave)
@@ -361,6 +365,15 @@ public:
 	
 	LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		return 0;
+	}
+
+	LRESULT OnPubMessage(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+	{
+		if (!wParam)
+		{
+			PushTaskIntoSendMessageQueue(nullptr);
+		}
 		return 0;
 	}
 
@@ -675,6 +688,14 @@ public:
 
 	LRESULT OnWin5Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		if (wParam == 0)
+		{
+			U8 ctlId = (U8)lParam;
+			if (ctlId == XWIN5_BUTTON_VIDEOCALL && g_dwMainThreadID)
+			{
+				::PostThreadMessage(g_dwMainThreadID, WM_WIN_SCREENTHREAD, 0, 0L);
+			}
+		}
 		return 0;
 	}
 
@@ -1058,7 +1079,7 @@ public:
 			}
 		}
 
-		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] cnt: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, g_dummyCount,
+		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] drag: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, 1,
 			m0,m1,m2,m3,m4,m5);
 		::SetWindowTextW(m_hWnd, (LPCWSTR)xtitle);
 
@@ -1090,7 +1111,7 @@ class CWoChatThreadManager
 {
 public:
 	// the main UI thread proc
-	static DWORD WINAPI RunThread(LPVOID lpData)
+	static DWORD WINAPI MainUIThread(LPVOID lpData)
 	{
 		DWORD dwRet = 0;
 		RECT rw = { 0 };
@@ -1109,6 +1130,7 @@ public:
 		winMain.ShowWindow(SW_SHOW);
 
 		// Main message loop:
+		//while ((0 == g_Quit) && GetMessageW(&msg, nullptr, 0, 0)) 
 		while (GetMessageW(&msg, nullptr, 0, 0))
 		{
 			if (!TranslateAcceleratorW(msg.hwnd, 0, &msg))
@@ -1123,8 +1145,46 @@ public:
 		return dwRet;
 	}
 
+	// the share screen UI thread proc
+	static DWORD WINAPI ShareScreenUIThread(LPVOID lpData)
+	{
+		DWORD dwRet = 0;
+		RECT rw = { 0 };
+		MSG msg = { 0 };
+		wchar_t title[5] = { 0x5206, 0x4eab,0x5c4f, 0x5e55, 0};
+
+		InterlockedIncrement(&g_threadCount);
+
+		rw.left = 300; rw.top = 300; rw.right = rw.left + 1024; rw.bottom = rw.top + 768;
+		
+		XWinScreen winScreen;
+		winScreen.Create(NULL, rw, (LPCWSTR)title, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VISIBLE);
+		if (FALSE == winScreen.IsWindow())
+			goto ExitShareScreenUIThread;
+
+		winScreen.ShowWindow(SW_SHOW);
+
+		// Main message loop:
+		//while ((0 == g_Quit) && GetMessageW(&msg, nullptr, 0, 0))
+		while (GetMessageW(&msg, nullptr, 0, 0))
+		{
+			if (!TranslateAcceleratorW(msg.hwnd, 0, &msg))
+			{
+				TranslateMessage(&msg);
+				DispatchMessageW(&msg);
+			}
+		}
+
+		//winScreen.DestroyWindow();
+
+	ExitShareScreenUIThread:
+		InterlockedDecrement(&g_threadCount);
+		return dwRet;
+	}
+
 	DWORD m_dwCount = 0;
 	HANDLE m_arrThreadHandles[MAXIMUM_WAIT_OBJECTS - 1];
+	DWORD  m_arrThreadIDs[MAXIMUM_WAIT_OBJECTS - 1];
 
 	CWoChatThreadManager()
 	{
@@ -1133,24 +1193,44 @@ public:
 	}
 
 	// Operations
-	DWORD AddThread(LPTSTR lpstrCmdLine, int nCmdShow)
+	DWORD AddThread(int uiType)
 	{
+		DWORD dwThreadID = 0;
+		HANDLE hThread = NULL;
+
 		if (m_dwCount == (MAXIMUM_WAIT_OBJECTS - 1))
 		{
 			::MessageBox(NULL, _T("ERROR: Cannot create ANY MORE threads!!!"), _T("WoChat"), MB_OK);
 			return 0;
 		}
 
-		DWORD dwThreadID;
-		HANDLE hThread = ::CreateThread(NULL, 0, RunThread, nullptr, 0, &dwThreadID);
-		if (hThread == NULL)
+		switch (uiType)
 		{
-			::MessageBox(NULL, _T("ERROR: Cannot create thread!!!"), _T("WoChat"), MB_OK);
-			return 0;
+		case WM_WIN_MAINUITHREAD:
+			hThread = ::CreateThread(NULL, 0, MainUIThread, nullptr, 0, &dwThreadID);
+			if (hThread == NULL)
+			{
+				::MessageBox(NULL, _T("ERROR: Cannot create thread!!!"), _T("WoChat"), MB_OK);
+				return 0;
+			}
+			break;
+		case WM_WIN_SCREENTHREAD:
+			hThread = ::CreateThread(NULL, 0, ShareScreenUIThread, nullptr, 0, &dwThreadID);
+			if (hThread == NULL)
+			{
+				::MessageBox(NULL, _T("ERROR: Cannot create thread!!!"), _T("WoChat"), MB_OK);
+				return 0;
+			}
+			break;
+		default:
+			break;
 		}
-
-		m_arrThreadHandles[m_dwCount] = hThread;
-		m_dwCount++;
+		if (hThread)
+		{
+			m_arrThreadHandles[m_dwCount] = hThread;
+			m_arrThreadIDs[m_dwCount] = dwThreadID;
+			m_dwCount++;
+		}
 		return dwThreadID;
 	}
 
@@ -1158,7 +1238,10 @@ public:
 	{
 		::CloseHandle(m_arrThreadHandles[dwIndex]);
 		if (dwIndex != (m_dwCount - 1))
+		{
 			m_arrThreadHandles[dwIndex] = m_arrThreadHandles[m_dwCount - 1];
+			m_arrThreadIDs[dwIndex]     = m_arrThreadIDs[m_dwCount - 1];
+		}
 		m_dwCount--;
 	}
 
@@ -1168,7 +1251,7 @@ public:
 		// force message queue to be created
 		::PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
 
-		AddThread(lpstrCmdLine, nCmdShow);
+		AddThread(WM_WIN_MAINUITHREAD);
 
 		int nRet = m_dwCount;
 		DWORD dwRet;
@@ -1182,14 +1265,29 @@ public:
 			}
 			else if (dwRet >= WAIT_OBJECT_0 && dwRet <= (WAIT_OBJECT_0 + m_dwCount - 1))
 			{
+#if 0
+				if (dwRet == WAIT_OBJECT_0) /* the user close the main window, so we close all other UI thread */
+				{
+					InterlockedIncrement(&g_Quit); // tell all other threads to quit
+					for (DWORD i = 1; i < m_dwCount; i++) /* tell all other the UI threads to quit. */
+					{
+						::PostThreadMessage(m_arrThreadIDs[i], WM_QUIT, 0, 0);
+						Sleep(100);
+						RemoveThread(i);
+					}
+					RemoveThread(dwRet - WAIT_OBJECT_0);
+					break;
+				}
+				else
+#endif 
 				RemoveThread(dwRet - WAIT_OBJECT_0);
 			}
 			else if (dwRet == (WAIT_OBJECT_0 + m_dwCount))
 			{
 				if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 				{
-					if (msg.message == WM_USER)
-						AddThread(nullptr, SW_SHOWNORMAL);
+					if (msg.message == WM_WIN_SCREENTHREAD)
+						AddThread(WM_WIN_SCREENTHREAD);
 				}
 			}
 			else
@@ -1519,6 +1617,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLi
 	g_Quit = 0;
 	g_threadCount = 0;
 	g_hInstance = hInstance;  // save the instance
+	g_dwMainThreadID = GetCurrentThreadId();
 
 	// The Microsoft Security Development Lifecycle recommends that all
 	// applications include the following call to ensure that heap corruptions

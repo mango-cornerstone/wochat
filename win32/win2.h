@@ -59,7 +59,7 @@ public:
 			XChatGroup* q;
 
 			p = m_chatgroupRoot;
-			p->mempool = wt_mempool_create("CHATGRUP", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
+			p->mempool = wt_mempool_create("CHATGROUP", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
 			if (nullptr != p->mempool)
 			{
 				m_chatgroupSelected = m_chatgroupRoot;

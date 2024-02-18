@@ -393,18 +393,20 @@ public:
 				MessageTask* mt = (MessageTask*)wt_palloc0(m_pool, sizeof(MessageTask));
 				if (mt)
 				{
-					U8* msgInput = (U8*)wt_palloc(m_pool, len);
+					U8* msgInput = (U8*)wt_palloc(m_pool, len + 4);
 					if (msgInput)
 					{
-						if (eb->GetInputMessage(msgInput, len))
+						if (eb->GetInputMessage(msgInput + 4, len))
 						{
 							int r = GetReceiverPublicKey(lpData, mt->pubkey);
 							if (0 == r && (0x02 == mt->pubkey[0] || 0x03 == mt->pubkey[0])) // the first byte of public key is 02 or 03
 							{
+								U32* p = (U32*)msgInput;
+								*p = ++g_messageSequence; // record the sequence
 								mt->state = MESSAGE_TASK_STATE_NULL;
 								mt->next = nullptr;
 								mt->message = msgInput;
-								mt->msgLen = len;
+								mt->msgLen = len + 4;
 								mt->type = 'T'; // this is the text message
 								wt_sha256_hash((const unsigned char*)mt->message, mt->msgLen, mt->hash);
 								PushTaskIntoSendMessageQueue(mt); // send to the network

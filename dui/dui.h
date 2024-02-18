@@ -582,7 +582,9 @@ public:
         assert(nullptr != p);
         assert(nullptr != a);
         imgNormal = n; imgHover = h; imgPress = p; imgActive = a;
-        setSize(imgNormal->w, imgNormal->h);
+
+        if(0 == m_left && 0 == m_top && 0 == m_right && 0 == m_bottom)
+            setSize(imgNormal->w, imgNormal->h);
     }
 
 };
