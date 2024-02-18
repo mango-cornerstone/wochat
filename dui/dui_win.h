@@ -510,40 +510,8 @@ public:
 
             T* pT = static_cast<T*>(this);
             pT->UpdateControlPosition();
-
-#if 0
-            if (nullptr != m_pool)
-            {
-                XDirtyList* p;
-                XDirtyList* q;
-
-                p = m_dirtylist;
-                while (p)
-                {
-                    q = p->next;
-                    pfree(p);
-                    p = q;
-                }
-                // after the windows size is changed, we need to repaint the whole area
-                m_dirtylist = (XDirtyList*)palloc(m_pool, sizeof(XDirtyList));
-                if (m_dirtylist)
-                {
-                    p = m_dirtylist;
-                    p->left = p->top = 0;
-                    p->right = m_area.right - m_area.left;
-                    p->bottom = m_area.bottom - m_area.top;
-                    p->next = nullptr;
-                }
-            }
-
-            // enable tool tips
-            if (m_startControl > 0 && m_message != DUI_NULL)
-            {
-                assert(m_endControl >= m_startControl);
-                PostWindowMessage(m_message, (U64)m_startControl, (U64)m_endControl);
-            }
-#endif
         }
+
         m_status |= DUI_STATUS_NEEDRAW;  // need to redraw this virtual window
         InvalidateDUIWindow();
         return DUI_STATUS_NEEDRAW;
@@ -602,15 +570,7 @@ public:
 
     int On_DUI_NCLBUTTONDOWN(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
-        XControl* xctl;
-
-        for (int i = 0; i < m_maxControl; i++)
-        {
-            xctl = m_controlArray[i];
-            assert(nullptr != xctl);
-            xctl->clearProperty(XCONTROL_PROP_LBDOWN);
-        }
-
+        ClearDUIWindowLBtnDown();
         return 0;
     }
 
@@ -759,6 +719,8 @@ public:
         int xPos = GET_X_LPARAM(lParam);
         int yPos = GET_Y_LPARAM(lParam);
 
+        SetDUIWindowLBtnDown();
+
         bool bInMyArea = XWinPointInRect(xPos, yPos, &m_area); // is the point in my area?
 
         if (bInMyArea)
@@ -844,6 +806,7 @@ public:
             assert(idxActive < m_maxControl);
             xctl = m_controlArray[idxActive];
             xctl->pfAction(this, m_message, 0, (LPARAM)idxActive);
+            ClearDUIWindowLBtnDown();
         }
 
         if (DUI_PROP_MOVEWIN & m_property)
@@ -892,6 +855,7 @@ public:
         int yPos = GET_Y_LPARAM(lParam);
         XControl* xctl;
 
+        ClearDUIWindowLBtnDown();
         ClearDUIWindowDragMode();
         m_DragMode = XDragMode::DragNone;
         m_ptOffsetOld.x = -1, m_ptOffsetOld.y = -1;

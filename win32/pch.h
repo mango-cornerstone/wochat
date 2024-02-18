@@ -16,6 +16,7 @@
 #include <fcntl.h> 
 #include <ntstatus.h>
 #include <bcrypt.h>
+#include <commdlg.h>
 
 #include <atlbase.h>
 #include <atlwin.h>

@@ -17,6 +17,9 @@ extern LONG  g_Quit;
 extern LONG  g_NetworkStatus;
 extern DWORD g_dwMainThreadID;
 extern U32	 g_messageSequence;
+extern HINSTANCE g_hInstance;
+extern HWND		 g_hWndShareScreen;
+extern HWND		 g_hWndChatHistory;
 
 extern U8* g_SK;
 extern U8* g_PK;
@@ -51,6 +54,9 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData);
 
 #define WM_WIN_MAINUITHREAD		(WM_USER + 400)
 #define WM_WIN_SCREENTHREAD		(WM_USER + 401)
+#define WM_WIN_CHATHISTHREAD	(WM_USER + 402)
+
+#define WM_WIN_BRING_TO_FRONT	(WM_USER + 500)
 
 #define WIN4_GET_PUBLICKEY		1
 #define WIN4_UPDATE_MESSAGE		2

@@ -101,9 +101,14 @@ extern HCURSOR	dui_hCursorIBeam;
 #define DUI_GLOBAL_STATE_CTRL_PRESSED   0x0000000000000010
 #define DUI_GLOBAL_STATE_SHIFT_PRESSED  0x0000000000000020
 #define DUI_GLOBAL_STATE_ALT_PRESSED    0x0000000000000040
+#define DUI_GLOBAL_STATE_LBUTTON_DOWN   0x0000000000000080
 
 // this gloable variable is shared by all virtual windows so they can know each other
 extern U64 dui_status;
+
+#define DUIWindowLButtonDown()           (DUI_GLOBAL_STATE_LBUTTON_DOWN & dui_status)
+#define SetDUIWindowLBtnDown()          do { dui_status |= DUI_GLOBAL_STATE_LBUTTON_DOWN;  } while(0)
+#define ClearDUIWindowLBtnDown()        do { dui_status &= ~DUI_GLOBAL_STATE_LBUTTON_DOWN; } while(0)
 
 #define DUIWindowInDragMode()           (DUI_GLOBAL_STATE_IN_DRAG_MODE & dui_status)
 #define SetDUIWindowDragMode()          do { dui_status |= DUI_GLOBAL_STATE_IN_DRAG_MODE;  } while(0)
@@ -224,7 +229,7 @@ enum XControlProperty
     XCONTROL_PROP_NONE     = 0x00000000,
     XCONTROL_PROP_ROUND    = 0x00000001,
     XCONTROL_PROP_STATIC   = 0x00000002,
-    XCONTROL_PROP_LBDOWN   = 0x00000004,
+    //XCONTROL_PROP_LBDOWN   = 0x00000004,
     XCONTROL_PROP_KEYBOARD = 0x00000008,
     XCONTROL_PROP_EDITBOX  = 0x00000010,
     XCONTROL_PROP_TEXT     = 0x00000020,

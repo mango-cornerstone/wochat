@@ -429,6 +429,38 @@ public:
 		}
 		return ret; 
 	}
+
+	int SelectUploadedFile(LPWSTR upfile)
+	{
+		OPENFILENAME ofn = { 0 };       // common dialog box structure
+		WCHAR path[MAX_PATH + 1] = { 0 };
+
+		// Initialize OPENFILENAME
+		ofn.lStructSize = sizeof(OPENFILENAMEW);
+		ofn.hwndOwner = m_hWnd;
+		ofn.lpstrFile = path;
+		//
+		// Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
+		// use the contents of file to initialize itself.
+		//
+		ofn.lpstrFile[0] = _T('\0');
+		ofn.nMaxFile = MAX_PATH; //sizeof(path) / sizeof(TCHAR);
+		ofn.lpstrFilter = _T("All files(*.*)\0*.*\0\0");
+		ofn.nFilterIndex = 1;
+		ofn.lpstrFileTitle = NULL;
+		ofn.nMaxFileTitle = 0;
+		ofn.lpstrInitialDir = NULL;
+		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+		/* Display the Open dialog box. */
+		if (GetOpenFileName(&ofn) != TRUE) 
+			return 1;
+
+		for (int i = 0; i < MAX_PATH; i++)
+			upfile[i] = path[i];
+
+		return 0;
+	}
 };
 
 #endif  /* __DUI_WINDOW5_H__ */

@@ -8,6 +8,9 @@
 #include "secp256k1.h"
 #include "secp256k1_ecdh.h"
 
+#define WT_NETWORK_IS_BAD		0
+#define WT_NETWORK_IS_GOOD		1
+
 typedef struct PublishTask
 {
 	PublishTask* next;
@@ -284,12 +287,12 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 			rc = mosquitto_connect_bind_v5(mosq, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, 60, NULL, NULL);
 			if (MOSQ_ERR_SUCCESS != rc)
 			{
-				InterlockedExchange(&g_NetworkStatus, 0); // if we cannot connect, the network is not good
+				InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_BAD); // if we cannot connect, the network is not good
 				wt_mempool_reset(mempool); // clean up the memory pool
 				continue;
 			}
 
-			InterlockedExchange(&g_NetworkStatus, 1); // the network is good
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_GOOD); // the network is good
 
 			p = task;
 			while (p)
@@ -353,12 +356,12 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 		ret = mosquitto_connect_bind_v5(mosq, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, 10, NULL, NULL);
 		if (MOSQ_ERR_SUCCESS == ret)
 		{
-			InterlockedExchange(&g_NetworkStatus, 1);
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_GOOD);
 			break;
 		}
 		else
 		{
-			InterlockedExchange(&g_NetworkStatus, 0); // if we cannot connect, the network is not good
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_BAD); // if we cannot connect, the network is not good
 			Sleep(1000); // wait for 1 second to try
 		}
 	}
@@ -372,10 +375,10 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 			ret = mosquitto_loop(mosq, -1, 1);
 			if (ret == MOSQ_ERR_SUCCESS)
 			{
-				InterlockedExchange(&g_NetworkStatus, 1);
+				InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_GOOD);
 				continue;
 			}
-			InterlockedExchange(&g_NetworkStatus, 0);
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_BAD);
 			break;
 		}
 
@@ -384,7 +387,7 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 
 		do 
 		{
-			InterlockedExchange(&g_NetworkStatus, 0);
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_BAD);
 			ret = mosquitto_reconnect(mosq);
 		} while (0 == g_Quit && ret != MOSQ_ERR_SUCCESS);
 
@@ -392,9 +395,9 @@ DWORD WINAPI MQTTSubThread(LPVOID lpData)
 			break;
 
 		if (MOSQ_ERR_SUCCESS == ret)  // because we can connect successfully, the network is good
-			InterlockedExchange(&g_NetworkStatus, 1);
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_GOOD);
 		else
-			InterlockedExchange(&g_NetworkStatus, 0);
+			InterlockedExchange(&g_NetworkStatus, WT_NETWORK_IS_BAD);
 	}
 
 QuitMQTTSubThread:

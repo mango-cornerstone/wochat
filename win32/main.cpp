@@ -35,6 +35,7 @@
 #include "win4.h"
 #include "win5.h"
 #include "winscreen.h"
+#include "winchathist.h"
 
 #if _DEBUG
 static const U8* default_private_key = (const U8*)"E3589E51A04EAB9343E2AD073890A1A2C1B172167D486C38045D88C6FD20CBBC";
@@ -60,6 +61,8 @@ U8*                 g_MQTTPubClientId = nullptr;
 U8*                 g_MQTTSubClientId = nullptr;
 HINSTANCE			g_hInstance = nullptr;
 HANDLE				g_MQTTPubEvent;
+HWND				g_hWndShareScreen = nullptr;
+HWND				g_hWndChatHistory = nullptr;
 
 CRITICAL_SECTION    g_csMQTTSub;
 CRITICAL_SECTION    g_csMQTTPub;
@@ -97,6 +100,8 @@ IDWriteTextFormat* GetTextFormat(U8 idx)
 	return nullptr;
 }
 
+LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 /************************************************************************************************
 *  The layout of the Main Window
 *
@@ -123,11 +128,15 @@ IDWriteTextFormat* GetTextFormat(U8 idx)
 // the main window class for the whole application
 class XWindow : public ATL::CWindowImpl<XWindow>
 {
+public:
+	DECLARE_XWND_CLASS(NULL, IDR_MAINFRAME, 0)
+
 private:
 	enum
 	{
 		STEPXY = 1,
-		SPLITLINE_WIDTH = 1
+		SPLITLINE_WIDTH = 1,
+		MOVESTEP = 1
 	};
 
 	enum class DrapMode { dragModeNone, dragModeV, dragModeH };
@@ -139,22 +148,16 @@ private:
 	RECT m_rectClient = { 0 };
 
 	int m_splitterVPos = -1;               // splitter bar position
-	int m_splitterVPosNew = -1;            // internal - new position while moving
 	int m_splitterVPosOld = -1;            // keep align value
-
 	int m_splitterHPos = -1;
-	int m_splitterHPosNew = -1;
 	int m_splitterHPosOld = -1;
 
-	int m_cxDragOffset = 0;		// internal
-	int m_cyDragOffset = 0;		// internal
+	int m_cxyDragOffset = 0;		// internal
 
 	int m_splitterVPosToLeft = 300;       // the minum pixel to the left of the client area.
 	int m_splitterVPosToRight = 400;       // the minum pixel to the right of the client area.
 	int m_splitterHPosToTop = (XWIN3_HEIGHT + XWIN4_HEIGHT);        // the minum pixel to the top of the client area.
 	int m_splitterHPosToBottom = XWIN5_HEIGHT;       // the minum pixel to the right of the client area.
-
-	int m_xySplitterDefPos = -1;         // default position
 
 	int m_marginLeft = 64;
 	int m_marginRight = 0;
@@ -193,8 +196,6 @@ private:
 	ID2D1SolidColorBrush* m_pBkgBrush1        = nullptr;
 
 public:
-	DECLARE_XWND_CLASS(NULL, IDR_MAINFRAME, 0)
-
 	XWindow()
 	{
 		m_rectClient.left = m_rectClient.right = m_rectClient.top = m_rectClient.bottom = 0;
@@ -229,6 +230,7 @@ public:
 		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
 		MESSAGE_HANDLER(WM_LBUTTONUP, OnLButtonUp)
 		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnLButtonDoubleClick)
+		MESSAGE_HANDLER(WM_KEYDOWN, OnKeyDown)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		COMMAND_ID_HANDLER(IDM_EDITBOX_COPY, OnEditBoxCopy)
 		COMMAND_ID_HANDLER(IDM_EDITBOX_CUT, OnEditBoxCut)
@@ -356,8 +358,8 @@ public:
 	{
 		LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
 
-		lpMMI->ptMinTrackSize.x = 800;
-		lpMMI->ptMinTrackSize.y = 600;
+		lpMMI->ptMinTrackSize.x = 1024;
+		lpMMI->ptMinTrackSize.y = 768;
 
 		return 0;
 	}
@@ -365,6 +367,62 @@ public:
 	
 	LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		return 0;
+	}
+
+	LRESULT OnKeyDown(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled)
+	{
+		if (::GetCapture() == m_hWnd)
+		{
+			bool bChanged = false;
+			POINT pt = { 0 };
+			int xyPos;
+
+			switch (wParam)
+			{
+#if 0
+			case VK_RETURN:
+			case VK_ESCAPE:
+				::ReleaseCapture();
+				break;
+#endif
+			case VK_LEFT:
+			case VK_RIGHT:
+			case VK_UP:
+			case VK_DOWN:
+				if (DrapMode::dragModeV == m_dragMode)
+				{
+					::GetCursorPos(&pt);
+					int xyPos = m_splitterVPos + ((wParam == VK_LEFT) ? -MOVESTEP : MOVESTEP);
+					if (xyPos >= m_splitterVPosToLeft && xyPos < (m_rectClient.right - m_splitterVPosToRight))
+					{
+						pt.x += (xyPos - m_splitterVPos);
+						::SetCursorPos(pt.x, pt.y);
+						bChanged = true;
+					}
+				}
+				if (DrapMode::dragModeH == m_dragMode)
+				{
+					::GetCursorPos(&pt);
+					int xyPos = m_splitterHPos + ((wParam == VK_UP) ? -MOVESTEP : MOVESTEP);
+
+					if (xyPos >= m_splitterHPosToTop && xyPos < (m_rectClient.bottom - m_splitterHPosToBottom))
+					{
+						pt.y += (xyPos - m_splitterHPos);
+						::SetCursorPos(pt.x, pt.y);
+						bChanged = true;
+					}
+				}
+
+				if(bChanged)
+					Invalidate();
+
+				break;
+			default:
+				break;
+			}
+			
+		}
 		return 0;
 	}
 
@@ -473,17 +531,40 @@ public:
 		if (DUIWindowInDragMode())
 		{
 			mdrag = 1;
+			ATLASSERT(DrapMode::dragModeNone == m_dragMode);
+
+			if (::GetCapture() != m_hWnd)
+				SetCapture();
+		}
+		else
+		{
+			m_dragMode = IsOverSplitterBar(xPos, yPos);
+			switch (m_dragMode)
+			{
+			case DrapMode::dragModeV:
+				m_cxyDragOffset = xPos - m_splitterVPos;
+				break;
+			case DrapMode::dragModeH:
+				m_cxyDragOffset = yPos - m_splitterHPos;
+				break;
+			default:
+				if (::GetCapture() == m_hWnd)
+					::ReleaseCapture();
+				return 0;
+			}
+
 			if (::GetCapture() != m_hWnd)
 			{
+				ClearDUIWindowLBtnDown();
 				SetCapture();
 			}
 		}
-
 		return 0;
 	}
 
 	LRESULT OnLButtonUp(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		ClearDUIWindowLBtnDown();
 		if (::GetCapture() == m_hWnd)
 		{
 			mdrag = 0;
@@ -496,62 +577,61 @@ public:
 	{
 		return 0;
 	}
-#if 0
-	bool SetSplitterPos(int xyPos = -1, bool bUpdate = true)
+
+	// When the virtial or horizonal bar is changed, We need to change the position of window 1/2/3/4/5
+	// window 0 is fixed
+	void AdjustDUIWindowPosition()
 	{
-		if (xyPos == -1)   // -1 == default position
+		if (nullptr != m_screenBuff)
 		{
-			if (m_xySplitterDefPos != -1)
-			{
-				xyPos = m_xySplitterDefPos;
-			}
-			else   // not set, use middle position
-			{
-				if (m_bVertical)
-					xyPos = (m_rcSplitter.right - m_rcSplitter.left - m_cxySplitBar - m_cxyBarEdge) / 2;
-				else
-					xyPos = (m_rcSplitter.bottom - m_rcSplitter.top - m_cxySplitBar - m_cxyBarEdge) / 2;
-			}
+			U32* dst;
+			U32  size;
+
+			// window 0 does not need to change
+			XRECT area;
+			XRECT* r;
+			XRECT* xr = m_win0.GetWindowArea();
+
+			area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
+			r = &area;
+
+			dst = m_screenBuff;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			dst += size;
+
+			// windows 1
+			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win1.UpdateSize(r, dst);
+			dst += size;
+
+			// windows 2
+			r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win2.UpdateSize(r, dst);
+
+			// windows 3
+			dst += size;
+			r->left = m_splitterVPos + SPLITLINE_WIDTH; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix1;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win3.UpdateSize(r, dst);
+
+			// windows 4
+			dst += size;
+			r->top = m_splitterHPosfix1 + SPLITLINE_WIDTH; r->bottom = m_splitterHPos;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win4.UpdateSize(r, dst);
+
+			// windows 5
+			dst += size;
+			r->top = m_splitterHPos + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win5.UpdateSize(r, dst);
 		}
-
-		// Adjust if out of valid range
-		int cxyMax = 0;
-		if (m_bVertical)
-			cxyMax = m_rcSplitter.right - m_rcSplitter.left;
-		else
-			cxyMax = m_rcSplitter.bottom - m_rcSplitter.top;
-
-		if (xyPos < m_cxyMin + m_cxyBarEdge)
-			xyPos = m_cxyMin;
-		else if (xyPos > (cxyMax - m_cxySplitBar - m_cxyBarEdge - m_cxyMin))
-			xyPos = cxyMax - m_cxySplitBar - m_cxyBarEdge - m_cxyMin;
-
-		// Set new position and update if requested
-		bool bRet = (m_xySplitterPos != xyPos);
-		m_xySplitterPos = xyPos;
-
-		if (m_bUpdateProportionalPos)
-		{
-			if (IsProportional())
-				StoreProportionalPos();
-			else if (IsRightAligned())
-				StoreRightAlignPos();
-		}
-		else
-		{
-			m_bUpdateProportionalPos = true;
-		}
-
-		if (bUpdate && bRet)
-			UpdateSplitterLayout();
-
-		return bRet;
 	}
-#endif
 
 	LRESULT OnMouseMove(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
-		bool bChanged = false;
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
@@ -566,51 +646,48 @@ public:
 			TrackMouseEvent(&tme);
 		}
 
-		if (!DUIWindowInDragMode())
+		if (!DUIWindowInDragMode() && !DUIWindowLButtonDown())
 		{
+			bool bChanged = false;
 			if (::GetCapture() == m_hWnd)
 			{
-#if 0
-				int	newSplitPos;
 				int	newSplitPos;
 				switch (m_dragMode)
 				{
 				case DrapMode::dragModeV:
-				{
-					newSplitPos = xPos - m_cxDragOffset;
-					if (newSplitPos == -1)   // avoid -1, that means default position
-						newSplitPos = -2;
-					if (m_splitterVPos != newSplitPos)
 					{
-						if (newSplitPos >= m_splitterVPosToLeft && newSplitPos < (m_rectClient.right - m_rectClient.left - m_splitterVPosToRight))
+						newSplitPos = xPos - m_cxyDragOffset;
+						if (m_splitterVPos != newSplitPos) // the position is changed
 						{
-							if (SetSplitterPos(newSplitPos, true))
+							if (newSplitPos >= m_splitterVPosToLeft && newSplitPos < (m_rectClient.right - m_rectClient.left - m_splitterVPosToRight))
+							{
+								m_splitterVPos = newSplitPos;
+								m_splitterVPosOld = m_splitterVPos - m_rectClient.left;
 								bChanged = true;
+							}
 						}
 					}
-				}
-				break;
+					break;
 				case DrapMode::dragModeH:
-				{
-					newSplitPos = yPos - m_cyDragOffset;
-					if (newSplitPos == -1)   // avoid -1, that means default position
-						newSplitPos = -2;
-					if (m_splitterHPos != newSplitPos)
 					{
-						if (newSplitPos >= m_splitterHPosToTop && newSplitPos < (m_rectClient.bottom - m_rectClient.top - m_splitterHPosToBottom))
+						newSplitPos = yPos - m_cxyDragOffset;
+						if (m_splitterHPos != newSplitPos)
 						{
-							if (SetSplitterPos(newSplitPos, false))
+							if (newSplitPos >= m_splitterHPosToTop && newSplitPos < (m_rectClient.bottom - m_rectClient.top - m_splitterHPosToBottom))
+							{
+								m_splitterHPos = newSplitPos;
+								m_splitterHPosOld = m_rectClient.bottom - m_splitterHPos;
 								bChanged = true;
+							}
 						}
 					}
-				}
-				break;
+					break;
 				default:
+					ATLASSERT(0);
 					break;
 				}
 				if (bChanged)
 					AdjustDUIWindowPosition();
-#endif
 			}
 			else
 			{
@@ -686,14 +763,85 @@ public:
 		return 0;
 	}
 
+	int ShowEmojiPopWindow()
+	{
+#if 0
+		const TCHAR szClassName[] = TEXT("MyWindowClass");
+		WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_HREDRAW | CS_VREDRAW, WndProcEmoji, 0, 0,
+						  g_hInstance, NULL, LoadCursor(NULL, IDC_ARROW),
+						  (HBRUSH)(COLOR_WINDOW + 1), NULL, szClassName, NULL };
+		if (!RegisterClassEx(&wc))
+		{
+			MessageBox(L"Window Registration Failed!", L"Error!", MB_OK);
+			return 0;
+		}
+
+		HWND hwnd = CreateWindowEx(0, szClassName, TEXT("Popup Window"), WS_POPUP,
+			300, 300, 400, 300, NULL, NULL, g_hInstance, NULL);
+		if (hwnd == NULL)
+		{
+			MessageBox(L"Window CreateWindowEx Failed!", L"Error!", MB_OK);
+			return 0;
+		}
+
+		::ShowWindow(hwnd, SW_SHOW);
+		::UpdateWindow(hwnd);
+
+		MSG msg;
+		while (GetMessage(&msg, NULL, 0, 0))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
+		return (int)msg.wParam;
+#endif 
+		return 0;
+	}
+
+	int DoScreenCapture()
+	{
+		return 0;
+	}
+
 	LRESULT OnWin5Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
 		if (wParam == 0)
 		{
 			U8 ctlId = (U8)lParam;
-			if (ctlId == XWIN5_BUTTON_VIDEOCALL && g_dwMainThreadID)
+			switch (ctlId)
 			{
-				::PostThreadMessage(g_dwMainThreadID, WM_WIN_SCREENTHREAD, 0, 0L);
+			case XWIN5_BUTTON_EMOJI:
+				ShowEmojiPopWindow();
+				break;
+			case XWIN5_BUTTON_UPLOAD:
+				{
+					WCHAR path[MAX_PATH + 1] = { 0 };
+					int rc = m_win5.SelectUploadedFile(path);
+					if (0 == rc)
+					{
+						// upload the file 
+						rc++;
+					}
+				}
+				break;
+			case XWIN5_BUTTON_CAPTURE:
+				DoScreenCapture();
+				break;
+			case XWIN5_BUTTON_CHATHISTORY:
+				if (g_dwMainThreadID)
+					::PostThreadMessage(g_dwMainThreadID, WM_WIN_CHATHISTHREAD, 0, 0L);
+				break;
+			case XWIN5_BUTTON_AUDIOCALL:
+				break;
+			case XWIN5_BUTTON_VIDEOCALL:
+				if(g_dwMainThreadID)
+					::PostThreadMessage(g_dwMainThreadID, WM_WIN_SCREENTHREAD, 0, 0L);
+				break;
+			case XWIN5_BUTTON_SENDMESSAGE:
+				break;
+			default:
+				break;
 			}
 		}
 		return 0;
@@ -831,57 +979,6 @@ public:
 			Invalidate();
 		}
 		return 0;
-	}
-
-	// When the virtial or horizonal bar is changed, 
-	// We need to change the position of windows 0/1/2/3/4/5
-	void AdjustDUIWindowPosition()
-	{
-		if (nullptr != m_screenBuff)
-		{
-			U32* dst;
-			U32  size;
-
-			// window 0 does not need to change
-			XRECT area, * r;
-			XRECT* xr = m_win0.GetWindowArea();
-
-			area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
-			r = &area;
-
-			dst = m_screenBuff;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			dst += size;
-
-			// windows 1
-			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			m_win1.UpdateSize(r, dst);
-			dst += size;
-
-			// windows 2
-			r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			m_win2.UpdateSize(r, dst);
-
-			// windows 3
-			dst += size;
-			r->left = m_splitterVPos + SPLITLINE_WIDTH; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix1;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			m_win3.UpdateSize(r, dst);
-
-			// windows 4
-			dst += size;
-			r->top = m_splitterHPosfix1 + SPLITLINE_WIDTH; r->bottom = m_splitterHPos;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			m_win4.UpdateSize(r, dst);
-
-			// windows 5
-			dst += size;
-			r->top = m_splitterHPos + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			m_win5.UpdateSize(r, dst);
-		}
 	}
 
 	void DrawSeperatedLines()
@@ -1144,7 +1241,7 @@ public:
 		InterlockedDecrement(&g_threadCount);
 		return dwRet;
 	}
-
+#if 0
 	// the share screen UI thread proc
 	static DWORD WINAPI ShareScreenUIThread(LPVOID lpData)
 	{
@@ -1181,7 +1278,7 @@ public:
 		InterlockedDecrement(&g_threadCount);
 		return dwRet;
 	}
-
+#endif 
 	DWORD m_dwCount = 0;
 	HANDLE m_arrThreadHandles[MAXIMUM_WAIT_OBJECTS - 1];
 	DWORD  m_arrThreadIDs[MAXIMUM_WAIT_OBJECTS - 1];
@@ -1214,6 +1311,7 @@ public:
 				return 0;
 			}
 			break;
+#if 0
 		case WM_WIN_SCREENTHREAD:
 			hThread = ::CreateThread(NULL, 0, ShareScreenUIThread, nullptr, 0, &dwThreadID);
 			if (hThread == NULL)
@@ -1222,6 +1320,7 @@ public:
 				return 0;
 			}
 			break;
+#endif
 		default:
 			break;
 		}
@@ -1280,14 +1379,25 @@ public:
 				}
 				else
 #endif 
+				if (dwRet == WAIT_OBJECT_0)
+					InterlockedIncrement(&g_Quit);
 				RemoveThread(dwRet - WAIT_OBJECT_0);
 			}
 			else if (dwRet == (WAIT_OBJECT_0 + m_dwCount))
 			{
 				if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 				{
-					if (msg.message == WM_WIN_SCREENTHREAD)
-						AddThread(WM_WIN_SCREENTHREAD);
+					switch (msg.message)
+					{
+					case WM_WIN_SCREENTHREAD:
+						CreateShareScreenThread(default_public_key);
+						break;
+					case WM_WIN_CHATHISTHREAD:
+						CreateChatHistoryThread(default_public_key);
+						break;
+					default:
+						break;
+					}
 				}
 			}
 			else
@@ -1667,4 +1777,18 @@ int GetReceiverPublicKey(void* parent, U8* pk)
 		r = pThis->GetCurrentPublicKey(pk);
 	}
 	return r;
+}
+
+LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	switch (msg)
+	{
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
+	return 0;
+
 }

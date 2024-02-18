@@ -104,7 +104,7 @@ int XControl::DoMouseMove(int x, int y, int idxActive)
 {
     int r = 0;
     
-    if (m_property & XCONTROL_PROP_LBDOWN) // the mouse is moving when the mouse left button is pressed
+    if (DUIWindowLButtonDown()) // the mouse is moving when the mouse left button is pressed
         return 0;
 
     if (x < 0) // fast path, for the most controls. The mouse is not hitting me
@@ -146,7 +146,6 @@ int XControl::DoMouseLBClickDown(int x, int y, int* idxActive)
     U32 status = m_status;
     U32 prop = (XCONTROL_PROP_EDITBOX | XCONTROL_PROP_FOCUS) & m_property;
 
-    m_property |= XCONTROL_PROP_LBDOWN; // record that the mouse left button is pressed
     if (x < 0) // fast path, for the most controls. The mouse is not hitting me
     {
         // if the old status is normal or active, we do not need to redraw
@@ -206,7 +205,7 @@ int XControl::DoMouseLBClickUp(int x, int y, int* idxActive)
         // if the old status is normal or active, we do not need to redraw
         r = (m_status == XCONTROL_STATE_NORMAL || m_status == XCONTROL_STATE_ACTIVE) ? 0 : 1; 
         m_status = (status != XCONTROL_STATE_ACTIVE) ? XCONTROL_STATE_NORMAL : XCONTROL_STATE_ACTIVE;
-        m_property &= ~(XCONTROL_PROP_FOCUS| XCONTROL_PROP_LBDOWN);
+        m_property &= ~XCONTROL_PROP_FOCUS;
         return r;
     }
 
@@ -218,7 +217,6 @@ int XControl::DoMouseLBClickUp(int x, int y, int* idxActive)
         if (idxActive)
             *idxActive = m_Id;
         ShowCursor(true);
-        m_property &= ~XCONTROL_PROP_LBDOWN;
         return r;
     }
 #if 0
@@ -236,7 +234,6 @@ int XControl::DoMouseLBClickUp(int x, int y, int* idxActive)
     // if the old status is normal or active, we do not need to redraw
     r = (m_status == XCONTROL_STATE_NORMAL || m_status == XCONTROL_STATE_ACTIVE) ? 0 : 1;
     m_status = (status != XCONTROL_STATE_ACTIVE) ? XCONTROL_STATE_NORMAL : XCONTROL_STATE_ACTIVE;
-    m_property &= ~XCONTROL_PROP_LBDOWN;
     return r;
 }
 

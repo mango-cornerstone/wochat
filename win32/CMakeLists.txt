@@ -6,7 +6,7 @@ set(WOCHATAPP_DIR "${CMAKE_CURRENT_LIST_DIR}"
 
 set(PRECOMPILE_HEADER_FILES pch.h)
 
-add_executable(${PROJECT_NAME} WIN32 main.cpp wochat.cpp mosquitto.cpp winlog.cpp wochat.rc)
+add_executable(${PROJECT_NAME} WIN32 main.cpp wochat.cpp mosquitto.cpp winchathist.cpp winscreen.cpp winlog.cpp wochat.rc)
 
 # Specify the precompiled header(s)
 target_precompile_headers(${PROJECT_NAME} PRIVATE ${PRECOMPILE_HEADER_FILES})
