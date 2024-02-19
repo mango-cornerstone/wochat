@@ -36,6 +36,7 @@
 #include "win5.h"
 #include "winscreen.h"
 #include "winchathist.h"
+#include "winaudiocall.h"
 
 #if _DEBUG
 static const U8* default_private_key = (const U8*)"E3589E51A04EAB9343E2AD073890A1A2C1B172167D486C38045D88C6FD20CBBC";
@@ -63,6 +64,7 @@ HINSTANCE			g_hInstance = nullptr;
 HANDLE				g_MQTTPubEvent;
 HWND				g_hWndShareScreen = nullptr;
 HWND				g_hWndChatHistory = nullptr;
+HWND				g_hWndAudioCall = nullptr;
 
 CRITICAL_SECTION    g_csMQTTSub;
 CRITICAL_SECTION    g_csMQTTPub;
@@ -833,6 +835,8 @@ public:
 					::PostThreadMessage(g_dwMainThreadID, WM_WIN_CHATHISTHREAD, 0, 0L);
 				break;
 			case XWIN5_BUTTON_AUDIOCALL:
+				if (g_dwMainThreadID)
+					::PostThreadMessage(g_dwMainThreadID, WM_WIN_AUDIOTHREAD, 0, 0L);
 				break;
 			case XWIN5_BUTTON_VIDEOCALL:
 				if(g_dwMainThreadID)
@@ -1346,6 +1350,7 @@ public:
 
 	int Run(LPTSTR lpstrCmdLine, int nCmdShow)
 	{
+		int rc = 0;
 		MSG msg;
 		// force message queue to be created
 		::PeekMessage(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE);
@@ -1390,10 +1395,13 @@ public:
 					switch (msg.message)
 					{
 					case WM_WIN_SCREENTHREAD:
-						CreateShareScreenThread(default_public_key);
+						rc = CreateShareScreenThread(default_public_key);
 						break;
 					case WM_WIN_CHATHISTHREAD:
-						CreateChatHistoryThread(default_public_key);
+						rc = CreateChatHistoryThread(default_public_key);
+						break;
+					case WM_WIN_AUDIOTHREAD:
+						rc = CreateAudioCallThread(default_public_key);
 						break;
 					default:
 						break;

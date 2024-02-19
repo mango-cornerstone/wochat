@@ -46,6 +46,27 @@ int XLabel::DrawText(int dx, int dy, DUI_Surface surface, DUI_Brush brush, DUI_B
         D2D1_POINT_2F orgin;
         orgin.x = X;
         orgin.y = Y;
+#if 0
+        int w = m_right - m_left;
+        if (w > (m_parentW * 7 / 8))
+        {
+            // Set trimming to ellipsis
+            DWRITE_TRIMMING trimming = { DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0 };
+            IDWriteInlineObject* pEllipsisInlineObject;
+            IDWriteFactory* pTextFactory = static_cast<IDWriteFactory*>(m_pTextFactory);
+            IDWriteTextFormat* pTextFormat = static_cast<IDWriteTextFormat*>(m_pTextFormat);
+
+            HRESULT hr = pTextFactory->CreateEllipsisTrimmingSign(pTextFormat, &pEllipsisInlineObject);
+            if (SUCCEEDED(hr))
+            {
+                trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
+                trimming.delimiter = 0;
+                trimming.delimiterCount = 0;
+                pTextLayout->SetTrimming(&trimming, pEllipsisInlineObject);
+                pEllipsisInlineObject->Release();
+            }
+        }
+#endif
         pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout, pTextBrush);
     }
 

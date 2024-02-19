@@ -21,6 +21,12 @@ class XWindow4 : public XWindowT <XWindow4>
 	};
 
 	XChatGroup* m_chatGroup = nullptr;
+
+	IDWriteTextLayout* m_cacheTL[1024];
+	FLOAT m_offsetX[1024];
+	FLOAT m_offsetY[1024];
+	U16  m_idxTL = 0;
+
 public:
 	XWindow4()
 	{
@@ -28,7 +34,16 @@ public:
 		m_property |= (DUI_PROP_HASVSCROLL | DUI_PROP_HANDLEWHEEL | DUI_PROP_HANDLETEXT);
 		m_message = WM_XWINDOWS04;
 	}
-	~XWindow4() {}
+
+	~XWindow4() 
+	{
+		for (U16 i = 0; i < m_idxTL; i++)
+		{
+			assert(m_cacheTL[i]);
+			SafeRelease(&m_cacheTL[i]);
+		}
+		m_idxTL = 0;
+	}
 
 public:
 	int GetPublicKey(U8* pk) // public key is 33 bytes in raw
@@ -394,11 +409,11 @@ public:
 
 	int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{ 
+		HRESULT hr;
 		U32 color;
 		bool isMe;
 		int x, y, dx, dy, W, H, pos;
 		XChatMessage* p;
-		IDWriteTextLayout* pTextLayout = nullptr;
 		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
 		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
 		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
@@ -408,6 +423,13 @@ public:
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		FLOAT Wf = static_cast<FLOAT>(w * 2 / 3);
+
+		for (U16 i = 0; i < m_idxTL; i++)
+		{
+			assert(m_cacheTL[i]);
+			SafeRelease(&m_cacheTL[i]);
+		}
+		m_idxTL = 0;
 
 		if (m_chatGroup)
 		{
@@ -438,21 +460,30 @@ public:
 					else
 						pD2DRenderTarget->FillRectangle(bkgarea, pBkgBrush1);
 
-					g_pDWriteFactory->CreateTextLayout(
+					hr = g_pDWriteFactory->CreateTextLayout(
 						p->message,
 						p->msgLen,
 						pTextFormat,
 						Wf,
 						static_cast<FLOAT>(1),
-						(IDWriteTextLayout**)(&pTextLayout));
+						(IDWriteTextLayout**)(&m_cacheTL[m_idxTL]));
 
-					if (pTextLayout)
+					if (S_OK == hr && m_cacheTL[m_idxTL])
 					{
 						orgin.x = static_cast<FLOAT>(dx + m_area.left - XWIN4_OFFSET);
 						orgin.y = static_cast<FLOAT>(dy + m_area.top + XWIN4_OFFSET);
-						pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout, pTextBrush);
+
+						m_offsetX[m_idxTL] = orgin.x;
+						m_offsetY[m_idxTL] = orgin.y;
+
+						pD2DRenderTarget->DrawTextLayout(orgin, m_cacheTL[m_idxTL], pTextBrush);
+						m_idxTL++;
+
+						if (m_idxTL >= 1024) // it is impossible
+						{
+							assert(0);
+						}
 					}
-					SafeRelease(&pTextLayout);
 				}
 				pos += H;
 				if (pos >= m_ptOffset.y + h) // out of the scope of the drawing area
@@ -461,6 +492,39 @@ public:
 			}
 		}
 		return 0; 
+	}
+
+	int Do_DUI_MOUSEMOVE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
+	{ 
+		int i, idxHit, r = 0;
+		FLOAT xPos = static_cast<FLOAT>(GET_X_LPARAM(lParam));
+		FLOAT yPos = static_cast<FLOAT>(GET_Y_LPARAM(lParam));
+		int w = m_area.right - m_area.left;
+		int h = m_area.bottom - m_area.top;
+		
+		HRESULT hr;
+		BOOL isTrailingHit = FALSE;
+		BOOL isInside = FALSE;
+		DWRITE_HIT_TEST_METRICS htm = { 0 };
+		FLOAT dx, dy;
+
+		idxHit = -1;
+		for (i = 0; i < m_idxTL; i++)
+		{
+			assert(m_cacheTL[i]);
+			dx = xPos - m_offsetX[i];
+			dy = yPos - m_offsetY[i];
+			hr = m_cacheTL[i]->HitTestPoint(dx, dy, &isTrailingHit, &isInside, &htm);
+			if (S_OK == hr && isInside)
+			{
+				::SetCursor(dui_hCursorIBeam);
+				SetDUIWindowCursor();
+				idxHit = i;
+				break;
+			}
+		}
+
+		return r; 
 	}
 };
 
