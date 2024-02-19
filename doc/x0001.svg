@@ -1,21 +1,24 @@
 <svg version="1.1" width="600" height="300" xmlns="http://www.w3.org/2000/svg" >
 <defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" /></marker></defs>
 
-<text x="22" y="60" style="font-size:13px;font-family:'Arial'">02E3687B......FE8D</text>
-<text x="148" y="59" style="font-size:13px;font-family:'Arial'">|</text>
-<text x="165" y="60" style="font-size:13px;font-family:'Arial'">kbXjONRXd1PvIOYl+FMr9C31AibnKX1W7JV/SYTB71rSFhgwvSs=</text>
-
-<path d="M 149 20 V 33" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
-<text x="90" y="15" style="font-size:13px;font-family:'Microsoft Yahei'">一个字节的分隔符</text>
+<text x="30" y="60" style="font-size:13px;font-family:'Microsoft Yahei'">接收者的公钥</text>
+<text x="130" y="60" style="font-size:13px;font-family:'Microsoft Yahei'">发送者的公钥</text>
+<text x="250" y="60" style="font-size:13px;font-family:'Microsoft Yahei'">加密后的数据包，包含真正的数据，可能也有随机数据</text>
+<text x="228" y="59" style="font-size:13px;font-family:'Arial'">|</text>
+<path d="M 230 20 V 33" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+<text x="210" y="15" style="font-size:13px;font-family:'Microsoft Yahei'">分隔符</text>
 
 <path d="M 20 65 h 560 v -20 h -560 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
-<path d="M 140 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
-<path d="M 160 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 120 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 220 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 240 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
 
-<path d="M 20 70 v 5 a 5 5 0 0 0 5 5 h 50 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 50 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
-<text x="54" y="100" style="font-size:13px;font-family:'Microsoft Yahei'">66个字节</text>
-<text x="260" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">经过base64编码后的消息包（已经加密）</text>
-<path d="M 160 40 v -5 a 5 5 0 0 1 5 -5 h 200 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 200 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+<path d="M 20 70 v 5 a 5 5 0 0 0 5 5 h 40 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 40 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
+<text x="145" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">44个字节</text>
+<text x="54" y="100" style="font-size:13px;font-family:'Microsoft Yahei'">44个字节</text>
+<text x="340" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">经过base64编码后的消息包</text>
+<path d="M 120 40 v -5 a 5 5 0 0 1 5 -5 h 40 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 40 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+<path d="M 240 40 v -5 a 5 5 0 0 1 5 -5 h 160 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 160 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
 
 <path d="M 160 70 v 20 L 20 130 V 148" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
 <path d="M 580 70 V 148" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
