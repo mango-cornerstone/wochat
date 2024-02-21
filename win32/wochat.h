@@ -142,8 +142,9 @@ typedef struct XChatGroup
 int InitWoChatDatabase(LPCWSTR lpszPath);
 
 int PushTaskIntoSendMessageQueue(MessageTask* message_task);
-//int PushTaskIntoReceiveMessageQueue(MessageTask* message_task);
 int GenPublicKeyFromSecretKey(U8* sk, U8* pk);
 int GetReceiverPublicKey(void* parent, U8* pk);
+
+int GetSecretKey(U8* sk, U8* pk);
 
 #endif // __WT_WOCHAT_H__

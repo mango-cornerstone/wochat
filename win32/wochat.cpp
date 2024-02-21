@@ -142,75 +142,96 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 		U32 length_raw;
 		U32 length_b64;
 
-		if (node->msgLen < 256) // we keep the minimal size to 256 bytes to make it harder for the attacker
+		if (node->msgLen < 252) // we keep the minimal size to 252 bytes to make it harder for the attacker
 		{
-			length_raw = 256 + 40;
-			offset = (U8)(256 - node->msgLen);
+			length_raw = 252 + 72;
+			offset = (U8)(252 - node->msgLen);
 		}
 		else
-			length_raw = node->msgLen + 40; // if the message is equal or more than 256 bytes, we do not make random data
+		{
+			offset = 0;
+			length_raw = node->msgLen + 72; // if the message is equal or more than 252 bytes, we do not make random data
+		}
 
 		message_raw = (U8*)wt_palloc(pool, length_raw);
 		if (message_raw)
 		{
-			U8 idx, salt0, salt1;
-			U32 i, crc;
+			U8* p;
+			U8* q;
+			U32* p32;
+			U8 idx;
+			U32 i, crcKs, crcHash;
 			wt_chacha20_context cxt = { 0 };
-			U8 key[32] = { 0 };
+			AES256_ctx ctxAES0 = { 0 };
+			AES256_ctx ctxAES1 = { 0 };
+			U8 hash[32] = { 0 };
+			U8 Ks[32] = { 0 };
+			U8 Kp[32] = { 0 };
 			U8 nonce[12] = { 0 };
 			U8 topic[67] = { 0 };
 
-			wt_sha256_hash(node->message, node->msgLen, message_raw); // generate the SHA256 hash of the original message
-			INIT_CRC32C(crc);
-			COMP_CRC32C(crc, message_raw, 32);
-			FIN_CRC32C(crc);  // generate the CRC value of the SHA256
+			GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, Kp);
 
-			U32* p32 = (U32*)(message_raw + 32);
+			wt_sha256_hash(node->message, node->msgLen, hash); // generate the SHA256 hash of the original message
+
+			wt_FillRandomData(Ks, 32); // genarate the session key
+
+			INIT_CRC32C(crcKs);
+			COMP_CRC32C(crcKs, Ks, 32);
+			FIN_CRC32C(crcKs);  // generate the CRC value of the session key
+
+			p = message_raw;
+
+			wt_AES256_init(&ctxAES0, Kp);
+			wt_AES256_encrypt(&ctxAES0, 2, p, Ks);
+
+			wt_AES256_init(&ctxAES1, Kp);
+			wt_AES256_encrypt(&ctxAES1, 2, p+32, hash);
+
+			INIT_CRC32C(crcHash);
+			COMP_CRC32C(crcHash, p+32, 32);
+			FIN_CRC32C(crcHash);  // generate the CRC value of the encrypted SHA256
+
+			p[64] = 1; // the version byte
+			p[65] = node->type; // the data type byte
+			idx = wt_GenRandomU8(offset); // a random offset
+			p[66] = idx;
+			p[67] = 'X'; // reserved byte
+
+			p32 = (U32*)(p + 68);
 			*p32 = node->msgLen;
-			U8* p = message_raw + 32 + 4;
-			*p++ = node->type;
 
-			idx = 0;
-			if (offset) // the original message is less than 256 bytes
-			{
-				idx = wt_GenRandomIntLessThan(offset);  // idx range is 0 .. offset - 1
-				wt_FillRandomData(message_raw + 40, length_raw - 40);
-			}
-			*p = idx;
-			memcpy(message_raw + 40 + idx, node->message, node->msgLen);
+			q = (U8*)&crcHash;
+			for (i = 0; i < 4; i++) p[64 + i] ^= q[i];
 
-			p = (U8*)&crc;
-			for (i = 0; i < 6; i++)  // we use the CRC32 of SHA256 to mask the length information
-				message_raw[32 + i] ^= p[i%4];
+			q = (U8*)&crcKs;
+			for (i = 0; i < 4; i++) p[68 + i] ^= q[i];
 
-			// we use two bytes random data as salt to aovid the same plain texts have the same cipher texts
-			wt_FillRandomData(message_raw + 38, 2); // generated two slat bytes
-			salt0 = message_raw[38]; 
-			salt1 = message_raw[39];
+			if (offset) // the original message is less than 252 bytes, we fill the random data in the 252 bytes
+				wt_FillRandomData(p + 72, length_raw - 72);
 
-			p = message_raw;  // we use two salts to make the same text to be the different
-			for (i = 0; i < 38; i++) p[i] ^= salt0;
-			for (i = 40; i < length_raw; i++) p[i] ^= salt1;
+			memcpy(p + 72 + idx, node->message, node->msgLen);
 
-			GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, key);
 			wt_chacha20_init(&cxt);
-			wt_chacha20_setkey(&cxt, key);
+			wt_chacha20_setkey(&cxt, Ks);
 			for (i = 0; i < 12; i++) nonce[i] = i;
 			wt_chacha20_starts(&cxt, nonce, 0);
-			wt_chacha20_update(&cxt, length_raw, (const unsigned char*)message_raw, message_raw);  // encrypt the message!
+			wt_chacha20_update(&cxt, length_raw - 32, (const unsigned char*)(p+32), p + 32);  // encrypt the message!
 			wt_chacha20_free(&cxt);
 
 			length_b64 = wt_b64_enc_len(length_raw);
-			msssage_b64 = (U8*)wt_palloc(pool, 67 + length_b64 + 1); // zero terminated
+			msssage_b64 = (U8*)wt_palloc(pool, 89 + length_b64 + 1); // zero terminated
 			if (msssage_b64)
 			{
-				wt_Raw2HexString(g_PK, 33, msssage_b64, nullptr);
-				msssage_b64[66] = '|';
-				wt_b64_encode((const char*)message_raw, length_raw, (char*)(msssage_b64 + 67), length_b64);
-				msssage_b64[length_b64 + 67] = '\0'; // make the last byte to be zero
+				p = msssage_b64;
+				wt_b64_encode((const char*)g_PK, 33, (char*)p, 44);
+				wt_b64_encode((const char*)node->pubkey, 33, (char*)(p+44), 44);
+				p[88] = '|';
+				wt_b64_encode((const char*)message_raw, length_raw, (char*)(p + 89), length_b64);
+				msssage_b64[length_b64 + 89] = '\0'; // make the last byte to be zero
 
 				wt_Raw2HexString(node->pubkey, 33, topic, nullptr);
-				if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 67 + 1, msssage_b64, 1, false, NULL))
+				if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 89 + 1, msssage_b64, 1, false, NULL))
 				{
 					InterlockedIncrement(&(node->state)); // we have processed this task
 				}
@@ -431,80 +452,107 @@ extern "C"
 		length_b64 = (U32)message->payloadlen;
 
 		// do some pre-check at first 
-		if (length_b64 < 132) // this is the minimal size for the packet
+		if (length_b64 < 134) // this is the minimal size for the packet
 			return;
 		if (msssage_b64[length_b64 - 1]) // the last byte is alway 0. 
 			return; 
-		if (msssage_b64[66] != '|' && msssage_b64[66] != '+' && msssage_b64[66] != '-') // the 67th bytes is spearated character
-			return;
-		if (!wt_IsPublicKey(msssage_b64, 66))
+		if (msssage_b64[88] != '|' && msssage_b64[88] != '#') // the 88th bytes is spearated character
 			return;
 
-		if (msssage_b64[66] == '|') // this is a common message packet
+		if (msssage_b64[88] == '|') // this is a common message packet
 		{
+			int rc;
+			U8* q;
 			U8* message_raw;
 			U32 length_raw;
-			length_raw = wt_b64_dec_len(length_b64 - 67 - 1);
+			U8 pkSender[33] = { 0 };
+			U8 pkReceiver[33] = { 0 };
+
+			q = msssage_b64;
+			rc = wt_b64_decode((const char*)q, 44, (char*)pkSender, 33);
+			if (rc != 33)
+				return;
+			rc = wt_b64_decode((const char*)(q + 44), 44, (char*)pkReceiver, 33);
+			if (rc != 33)
+				return;
+			if (memcmp(pkReceiver, g_PK, 33))
+				return;
+
+			length_raw = wt_b64_dec_len(length_b64 - 89 - 1);
 			message_raw = (U8*)wt_palloc(pool, length_raw);
 			if (message_raw)
 			{
-				U8 type, offset, salt0, salt1;
-				U8* p;
-				U32 i, crc, length;
+				U8 type, version, offset, reserved;
+				U32 i, length, crcKs, crcHash;
 				MessageTask* task;
-				U8 pubkey[33] = { 0 };
-				U8 key[32] = { 0 };
+				U8 Kp[32] = { 0 };
+				U8 Ks[32] = { 0 };
 				U8 nonce[12] = { 0 };
 				U8 hash[32] = { 0 };
+				U8 hash_org[32] = { 0 };
+
 				wt_chacha20_context cxt = { 0 };
+				AES256_ctx ctxAES0 = { 0 };
+				AES256_ctx ctxAES1 = { 0 };
 
-				int rc = wt_b64_decode((const char*)msssage_b64 + 67, length_b64 - 67 - 1, (char*)message_raw, length_raw);
+				U8* p = message_raw;
+				rc = wt_b64_decode((const char*)(q + 89), length_b64 - 89 - 1, (char*)p, length_raw);
+				if (rc != length_raw)
+				{
+					wt_pfree(message_raw);
+					return;
+				}
 
-				wt_HexString2Raw(msssage_b64, 66, pubkey, nullptr);
-				GetKeyFromSecretKeyAndPlubicKey(g_SK, pubkey, key);
+				GetKeyFromSecretKeyAndPlubicKey(g_SK, pkSender, Kp);
+
+				wt_AES256_init(&ctxAES0, Kp);
+				wt_AES256_decrypt(&ctxAES0, 2, Ks, p);
+				INIT_CRC32C(crcKs);
+				COMP_CRC32C(crcKs, Ks, 32);
+				FIN_CRC32C(crcKs);  // generate the CRC value of the session key
+
 				wt_chacha20_init(&cxt);
-				wt_chacha20_setkey(&cxt, key);
+				wt_chacha20_setkey(&cxt, Ks);
 				for (i = 0; i < 12; i++) nonce[i] = i;
 				wt_chacha20_starts(&cxt, nonce, 0);
-				wt_chacha20_update(&cxt, length_raw, (const unsigned char*)message_raw, message_raw);  // decrypt the message!
+				wt_chacha20_update(&cxt, length_raw - 32, (const unsigned char*)(p+32), p+32);  // decrypt the message!
 				wt_chacha20_free(&cxt);
 
-				// remove the salt at first
-				p = message_raw; 
-				salt0 = p[38];
-				salt1 = p[39];
-				for (i = 0; i < 38; i++) p[i] ^= salt0;
-				for (i = 40; i < length_raw; i++) p[i] ^= salt1;
+				INIT_CRC32C(crcHash);
+				COMP_CRC32C(crcHash, p+32, 32);
+				FIN_CRC32C(crcHash);  // generate the CRC value of the encrypted SHA256
 
-				// the first 32 byte is the SHA256 of original message
-				INIT_CRC32C(crc);
-				COMP_CRC32C(crc, message_raw, 32);
-				FIN_CRC32C(crc);
-				p = (U8*)&crc;
+				wt_AES256_init(&ctxAES1, Kp);
+				wt_AES256_decrypt(&ctxAES1, 2, hash, p+32);
 
-				for (i = 0; i < 6; i++)	message_raw[32 + i] ^= p[i%4];
+				q = (U8*)&crcHash;
+				for (i = 0; i < 4; i++) p[64 + i] ^= q[i]; 
 
-				p = message_raw;
-				length = *((U32*)(p + 32)); // the length of the original message
-				type = p[36];
-				offset = p[37];
+				q = (U8*)&crcKs;
+				for (i = 0; i < 4; i++) p[68 + i] ^= q[i];
 
-				p = message_raw + 40 + offset; // now p is pointing to the real message
-				wt_sha256_hash(p, length, hash);
+				version  = p[64];
+				type     = p[65];
+				offset   = p[66];
+				reserved = p[67];
+				length = *((U32*)(p + 68)); // the length of the original message
 
-				if (0 == memcmp(hash, message_raw, 32)) // check the hash value is the same
+				q = p + 72 + offset; // now p is pointing to the real message
+				wt_sha256_hash(q, length, hash_org);
+
+				if (0 == memcmp(hash, hash_org, 32)) // check the hash value is the same
 				{
 					task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
 					if (task)
 					{
-						memcpy(task->pubkey, pubkey, 33);
+						memcpy(task->pubkey, pkSender, 33);
 						memcpy(task->hash, hash, 32);
 						task->type = type;
 						task->msgLen = length;
 						task->message = (U8*)wt_palloc(pool, length);
 						if (task->message)
 						{
-							memcpy(task->message, p, length);
+							memcpy(task->message, q, length);
 							PushTaskIntoReceiveMessageQueue(task);
 							::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
 						}

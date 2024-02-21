@@ -102,6 +102,11 @@ IDWriteTextFormat* GetTextFormat(U8 idx)
 	return nullptr;
 }
 
+int GetSecretKey(U8* sk, U8* pk)
+{
+	return 0;
+}
+
 LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /************************************************************************************************
@@ -1681,6 +1686,8 @@ static int InitInstance(HINSTANCE hInstance)
 
 	g_SubData.host = MQTT_DEFAULT_HOST;
 	g_SubData.port = MQTT_DEFAULT_PORT;
+
+	g_messageSequence = wt_GenRandomU32(0x7FFFFFFF);
 
 	return 0;
 }
