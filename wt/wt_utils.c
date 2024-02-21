@@ -178,41 +178,33 @@ int wt_FillRandomData(U8* buf, U8 len)
 	return r;
 }
 
-U8 wt_GenRandomU8(U8 lessthan)
+U8 wt_GenRandomU8(U8 upper)
 {
 	U8 r = 0;
 
-	if (lessthan < 2)
-	{
-		return 0;
-	}
-	else
+	if (upper)
 	{
 		U8 bit64[8] = { 0 };
 		if (0 == wt_FillRandomData(bit64, 8))
 		{
 			U64 p64 = *((U64*)bit64);
-			r = p64 % lessthan;
+			r = p64 % (upper + 1);
 		}
 	}
 	return r;
 }
 
-U32 wt_GenRandomU32(U32 lessthan)
+U32 wt_GenRandomU32(U32 upper)
 {
 	U32 r = 0;
 
-	if (lessthan < 2)
-	{
-		return 0;
-	}
-	else
+	if (upper)
 	{
 		U8 bit64[8] = { 0 };
 		if (0 == wt_FillRandomData(bit64, 8))
 		{
 			U64 p64 = *((U64*)bit64);
-			r = p64 % lessthan;
+			r = p64 % (upper + 1);
 		}
 	}
 	return r;

@@ -497,7 +497,7 @@ extern "C"
 
 				U8* p = message_raw;
 				rc = wt_b64_decode((const char*)(q + 89), length_b64 - 89 - 1, (char*)p, length_raw);
-				if (rc != length_raw)
+				if (rc < 0)
 				{
 					wt_pfree(message_raw);
 					return;
