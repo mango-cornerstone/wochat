@@ -1,19 +1,36 @@
-<svg version="1.1" width="600" height="120" xmlns="http://www.w3.org/2000/svg" >
+<svg version="1.1" width="600" height="300" xmlns="http://www.w3.org/2000/svg" >
 <defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" /></marker></defs>
 
-<text x="22" y="60" style="font-size:13px;font-family:'Arial'">02E3687B......FE8D</text>
-<text x="146" y="59" style="font-size:13px;font-family:'Arial'">+</text>
-<text x="165" y="60" style="font-size:13px;font-family:'Arial'">C8FD1229E9035D0EA4D1...9BA38E7F73D6D29FEE43C4ADF537CA</text>
+<text x="30" y="60" style="font-size:13px;font-family:'Microsoft Yahei'">发送者的公钥</text>
+<text x="130" y="60" style="font-size:13px;font-family:'Microsoft Yahei'">接收者的公钥</text>
+<text x="251" y="60" style="font-size:13px;font-family:'Microsoft Yahei'">加密的数据包</text>
+<text x="226" y="60" style="font-size:13px;font-family:'Arial'">#</text>
+<path d="M 230 20 V 33" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+<text x="210" y="15" style="font-size:13px;font-family:'Microsoft Yahei'">分隔符</text>
 
-<path d="M 150 20 V 33" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
-<text x="70" y="15" style="font-size:13px;font-family:'Microsoft Yahei'">加号分隔符，一个字节</text>
+<path d="M 20 65 h 320 v -20 h -320 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 120 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 220 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 240 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
 
-<path d="M 20 65 h 560 v -20 h -560 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
-<path d="M 140 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
-<path d="M 160 45 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 20 70 v 5 a 5 5 0 0 0 5 5 h 40 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 40 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
+<text x="145" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">44个字节</text>
+<text x="45" y="100" style="font-size:13px;font-family:'Microsoft Yahei'">44个字节</text>
+<text x="260" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">44个字节</text>
+<path d="M 120 40 v -5 a 5 5 0 0 1 5 -5 h 40 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 40 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+<path d="M 240 40 v -5 a 5 5 0 0 1 5 -5 h 40 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 40 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
 
-<path d="M 20 70 v 5 a 5 5 0 0 0 5 5 h 50 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 50 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
-<text x="54" y="100" style="font-size:13px;font-family:'Microsoft Yahei'">66个字节</text>
-<text x="344" y="20" style="font-size:13px;font-family:'Microsoft Yahei'">64个字节</text>
-<path d="M 160 40 v -5 a 5 5 0 0 1 5 -5 h 200 a 5 5 0 0 0 5 -5 a 5 5 0 0 0 5 5 h 200 a 5 5 0 0 1 5 5 v 5" stroke="#000000" stroke-width="1" fill="none"/>
+<path d="M 240 70 v 20 L 20 125 V 148" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
+<path d="M 340 70 v 20 L 580 130 V 148" stroke="#000000" stroke-width="1"  stroke-dasharray="3,3" fill="none" marker-end="url(#arrowhead)"  />
+
+<path d="M 20 180 h 560 v -20 h -560 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+<path d="M 40 160 v 20" stroke="#0000FF" stroke-width="1" fill="none"/>
+
+<path d="M 30 200 V 192" stroke="#000000" stroke-width="1" fill="none" marker-end="url(#arrowhead)"  />
+<path d="M 40 185 v 5 a 5 5 0 0 0 5 5 h 260 a 5 5 0 0 1 5 5 a 5 5 0 0 1 5 -5 h 260 a 5 5 0 0 0 5 -5 v -5" stroke="#000000" stroke-width="1" fill="none"/>
+
+<text x="150" y="175" style="font-size:13px;font-family:'Microsoft Yahei'">由主密钥使用AES256加密后的消息包的SHA256哈希值</text>
+<text x="18" y="215" style="font-size:13px;font-family:'Microsoft Yahei'">1个字节</text>
+<text x="280" y="215" style="font-size:13px;font-family:'Microsoft Yahei'">32个字节</text>
+
 </svg>
