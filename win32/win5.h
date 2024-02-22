@@ -390,10 +390,10 @@ public:
 			U32 len = eb->GetInputMessageLengthInBytes();
 			if (len > 0) // the user input some message that is ready to send
 			{
-				MessageTask* mt = (MessageTask*)wt_palloc0(m_pool, sizeof(MessageTask));
+				MessageTask* mt = (MessageTask*)wt_palloc0(g_messageMemPool, sizeof(MessageTask));
 				if (mt)
 				{
-					U8* msgInput = (U8*)wt_palloc(m_pool, len + 4);
+					U8* msgInput = (U8*)wt_palloc(g_messageMemPool, len + 4);
 					if (msgInput)
 					{
 						if (eb->GetInputMessage(msgInput + 4, len))

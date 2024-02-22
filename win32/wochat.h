@@ -5,6 +5,7 @@
 
 #include "dui.h"
 #include "wt_mempool.h"
+#include "wt_hash.h"
 #include "wt_utils.h"
 #include "wt_sha256.h"
 #include "wt_aes256.h"
@@ -16,7 +17,11 @@ extern LONG  g_threadCount;
 extern LONG  g_Quit;
 extern LONG  g_NetworkStatus;
 extern DWORD g_dwMainThreadID;
-extern U32	 g_messageSequence;
+
+extern U32	             g_messageSequence;
+extern HTAB*             g_messageHTAB;
+extern MemoryPoolContext g_messageMemPool;
+
 extern HINSTANCE g_hInstance;
 
 extern HWND		 g_hWndShareScreen;
@@ -104,6 +109,7 @@ typedef struct XChatMessage
 	struct XChatMessage* next;
 	struct XChatMessage* prev;
 	U32  id;
+	U8   hash[32];
 	U32* icon;     // the bitmap data of this icon
 	U8   w;        // the width in pixel of this icon
 	U8   h;        // the height in pixel of this icon
@@ -117,6 +123,12 @@ typedef struct XChatMessage
 	U16  msgLen;
 	U8* obj;       // point to GIF/APNG/Video/Pic etc
 } XChatMessage;
+
+typedef struct XMessage
+{
+	U8 hash[32];
+	XChatMessage* pointer;
+} XMessage;
 
 typedef struct XChatGroup
 {
@@ -144,6 +156,9 @@ int InitWoChatDatabase(LPCWSTR lpszPath);
 int PushTaskIntoSendMessageQueue(MessageTask* message_task);
 int GenPublicKeyFromSecretKey(U8* sk, U8* pk);
 int GetReceiverPublicKey(void* parent, U8* pk);
+
+// send a confirmation to the sender
+int SendConfirmationMessage(U8* pk, U8* hash);
 
 int GetSecretKey(U8* sk, U8* pk);
 

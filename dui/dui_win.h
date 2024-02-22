@@ -560,6 +560,16 @@ public:
             r += xctl->DoMouseLeave();
         }
 
+        if (DUI_PROP_HASVSCROLL & m_property) // handle the vertical bar
+        {
+            U32 statusOld = m_status;
+            
+            m_status &= (~DUI_STATUS_VSCROLL); // let the vertical bar to disappear
+            
+            if (statusOld != m_status)
+                r++;
+        }
+
         if (r)
         {
             m_status |= DUI_STATUS_NEEDRAW;

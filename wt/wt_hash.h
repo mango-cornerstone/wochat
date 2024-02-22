@@ -3,31 +3,38 @@
 
 #include "wochatypes.h"
 #include "wt_internals.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-   /*
-	* Constants
-	*
-	* A hash table has a top-level "directory", each of whose entries points
-	* to a "segment" of ssize bucket headers.  The maximum number of hash
-	* buckets is thus dsize * ssize (but dsize may be expansible).  Of course,
-	* the number of records in the table can be larger, but we don't want a
-	* whole lot of records per bucket or performance goes down.
-	*
-	* In a hash table allocated in shared memory, the directory cannot be
-	* expanded because it must stay at a fixed address.  The directory size
-	* should be selected using hash_select_dirsize (and you'd better have
-	* a good idea of the maximum number of entries!).  For non-shared hash
-	* tables, the initial directory size can be left at the default.
-	*/
-#define DEF_SEGSIZE			   256
-#define DEF_SEGSIZE_SHIFT	   8	/* must be log2(DEF_SEGSIZE) */
-#define DEF_DIRSIZE			   256
 
-/* Number of freelists to be used for a partitioned hash table. */
-#define NUM_FREELISTS			32
+/*
+ * Hash functions must have this signature.
+ */
+typedef uint32(*HashValueFunc) (const void* key, Size keysize);
+
+/*
+ * Key comparison functions must have this signature.  Comparison functions
+ * return zero for match, nonzero for no match.  (The comparison function
+ * definition is designed to allow memcmp() and strncmp() to be used directly
+ * as key comparison functions.)
+ */
+typedef int (*HashCompareFunc) (const void* key1, const void* key2,	Size keysize);
+
+/*
+ * Key copying functions must have this signature.  The return value is not
+ * used.  (The definition is set up to allow memcpy() and strlcpy() to be
+ * used directly.)
+ */
+typedef void* (*HashCopyFunc) (void* dest, const void* src, Size keysize);
+
+/*
+ * Space allocation function for a hashtable --- designed to match malloc().
+ * Note: there is no free function API; can't destroy a hashtable unless you
+ * use the default allocator.
+ */
+typedef void* (*HashAllocFunc) (MemoryContext ctx, Size size);
 
 /*
  * HASHELEMENT is the private part of a hashtable entry.  The caller's data
@@ -89,7 +96,7 @@ struct HASHHDR
 	 * If the hash table is not partitioned, only freeList[0] is used and its
 	 * spinlock is not used at all; callers' locking is assumed sufficient.
 	 */
-	FreeListData freeList[NUM_FREELISTS];
+	FreeListData freeList[1];
 
 	/* These fields can change, but not in a partitioned table */
 	/* Also, dsize can't change in a shared table, even if unpartitioned */
@@ -119,34 +126,6 @@ struct HASHHDR
 };
 
 typedef struct HASHHDR HASHHDR;
-
-/*
- * Hash functions must have this signature.
- */
-typedef uint32(*HashValueFunc) (const void* key, Size keysize);
-
-/*
- * Key comparison functions must have this signature.  Comparison functions
- * return zero for match, nonzero for no match.  (The comparison function
- * definition is designed to allow memcmp() and strncmp() to be used directly
- * as key comparison functions.)
- */
-typedef int (*HashCompareFunc) (const void* key1, const void* key2,	Size keysize);
-
-/*
- * Key copying functions must have this signature.  The return value is not
- * used.  (The definition is set up to allow memcpy() and strlcpy() to be
- * used directly.)
- */
-typedef void* (*HashCopyFunc) (void* dest, const void* src, Size keysize);
-
-/*
- * Space allocation function for a hashtable --- designed to match malloc().
- * Note: there is no free function API; can't destroy a hashtable unless you
- * use the default allocator.
- */
-typedef void* (*HashAllocFunc) (Size request);
-
 /*
  * Top control structure for a hashtable --- in a shared table, each backend
  * has its own copy (OK since no fields change at runtime)

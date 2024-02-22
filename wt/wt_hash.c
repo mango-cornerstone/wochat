@@ -94,14 +94,34 @@
 
 #include <string.h>
 
-
+#include "wt_mempool.h"
 #include "wt_hash.h"
 
-#if 0
+  /*
+   * Constants
+   *
+   * A hash table has a top-level "directory", each of whose entries points
+   * to a "segment" of ssize bucket headers.  The maximum number of hash
+   * buckets is thus dsize * ssize (but dsize may be expansible).  Of course,
+   * the number of records in the table can be larger, but we don't want a
+   * whole lot of records per bucket or performance goes down.
+   *
+   * In a hash table allocated in shared memory, the directory cannot be
+   * expanded because it must stay at a fixed address.  The directory size
+   * should be selected using hash_select_dirsize (and you'd better have
+   * a good idea of the maximum number of entries!).  For non-shared hash
+   * tables, the initial directory size can be left at the default.
+   */
+#define DEF_SEGSIZE			   256
+#define DEF_SEGSIZE_SHIFT	   8	/* must be log2(DEF_SEGSIZE) */
+#define DEF_DIRSIZE			   256
+
+/* Number of freelists to be used for a partitioned hash table. */
+#define NUM_FREELISTS			32
+
 /*
  * Private function prototypes
  */
-static void* DynaHashAlloc(Size size);
 static HASHSEGMENT seg_alloc(HTAB* hashp);
 static bool element_alloc(HTAB* hashp, int nelem, int freelist_idx);
 static bool dir_realloc(HTAB* hashp);
@@ -524,8 +544,7 @@ static inline uint64 pg_ceil_log2_64(uint64 num)
 #define SIZEOF_LONG 8
 
 /* calculate ceil(log base 2) of num */
-int
-my_log2(long num)
+int my_log2(long num)
 {
 #if 0
 	/*
@@ -540,18 +559,6 @@ my_log2(long num)
 #else
 	return pg_ceil_log2_64(num);
 #endif
-}
-
-/*
- * memory allocation support
- */
-static MemoryPoolContext CurrentDynaHashCxt = NULL;
-
-static void* DynaHashAlloc(Size size)
-{
-	Assert(MemoryContextIsValid(CurrentDynaHashCxt));
-
-	return MemoryContextAllocExtended(CurrentDynaHashCxt, size,	MCXT_ALLOC_NO_OOM);
 }
 
 /* max_dsize value to indicate expansible directory */
@@ -623,8 +630,7 @@ static HASHSEGMENT seg_alloc(HTAB* hashp)
 {
 	HASHSEGMENT segp;
 
-	CurrentDynaHashCxt = hashp->hcxt;
-	segp = (HASHSEGMENT)hashp->alloc(sizeof(HASHBUCKET) * hashp->ssize);
+	segp = (HASHSEGMENT)hashp->alloc(hashp->hcxt, sizeof(HASHBUCKET) * hashp->ssize);
 
 	if (!segp)
 		return NULL;
@@ -693,8 +699,7 @@ static bool init_htab(HTAB* hashp, long nelem)
 	/* Allocate a directory */
 	if (!(hashp->dir))
 	{
-		CurrentDynaHashCxt = hashp->hcxt;
-		hashp->dir = (HASHSEGMENT*)hashp->alloc(hctl->dsize * sizeof(HASHSEGMENT));
+		hashp->dir = (HASHSEGMENT*)hashp->alloc(hashp->hcxt, hctl->dsize * sizeof(HASHSEGMENT));
 		if (!hashp->dir)
 			return false;
 	}
@@ -724,6 +729,21 @@ static bool init_htab(HTAB* hashp, long nelem)
 	return true;
 }
 
+/*
+ * memory allocation support
+ */
+static void* DynaHashAlloc(MemoryContext ctx, Size size)
+{
+	void* ret = NULL;
+	if (ctx)
+	{
+		Assert(MemoryContextIsValid(ctx));
+
+		ret = MemoryContextAllocExtended(ctx, size, MCXT_ALLOC_NO_OOM);
+	}
+
+	return ret;
+}
 
 /************************** CREATE ROUTINES **********************/
 
@@ -768,7 +788,7 @@ HTAB* hash_create(const char* tabname, long nelem, const HASHCTL* info, int flag
 {
 	HTAB* hashp;
 	HASHHDR* hctl;
-
+	MemoryContext cxt;
 	/*
 	 * Hash tables now allocate space for key and data, but you have to say
 	 * how much space to allocate.
@@ -776,7 +796,7 @@ HTAB* hash_create(const char* tabname, long nelem, const HASHCTL* info, int flag
 	Assert(flags & HASH_ELEM);
 	Assert(info->keysize > 0);
 	Assert(info->entrysize >= info->keysize);
-
+#if 0
 	/*
 	 * For shared hash tables, we have a local hash header (HTAB struct) that
 	 * we allocate in TopMemoryContext; all else is in shared memory.
@@ -787,7 +807,7 @@ HTAB* hash_create(const char* tabname, long nelem, const HASHCTL* info, int flag
 	 * a context specified by the caller, or TopMemoryContext if nothing is
 	 * specified.
 	 */
-#if 0
+
 	if (flags & HASH_SHARED_MEM)
 	{
 		/* Set up to allocate the hash header */
@@ -805,15 +825,19 @@ HTAB* hash_create(const char* tabname, long nelem, const HASHCTL* info, int flag
 			ALLOCSET_DEFAULT_SIZES);
 	}
 #endif
-	CurrentDynaHashCxt = AllocSetContextCreateInternal2(NULL, "dynahash", ALLOCSET_DEFAULT_SIZES);
+	cxt = AllocSetContextCreateInternal2(NULL, "dynahash", ALLOCSET_DEFAULT_SIZES);
 
+	if (!cxt)
+		return NULL;
 	/* Initialize the hash header, plus a copy of the table name */
 	size_t len = strlen(tabname);
-	hashp = (HTAB*)DynaHashAlloc(sizeof(HTAB) + len + 1);
+	hashp = (HTAB*)DynaHashAlloc(cxt, sizeof(HTAB) + len + 1);
 	MemSet(hashp, 0, sizeof(HTAB));
 
 	hashp->tabname = (char*)(hashp + 1);
 	strcpy(hashp->tabname, tabname);
+
+	hashp->hcxt = cxt; /* save the memory conext */
 
 #if 0
 	/* If we have a private context, label it with hashtable's name */
@@ -935,13 +959,12 @@ HTAB* hash_create(const char* tabname, long nelem, const HASHCTL* info, int flag
 		/* setup hash table defaults */
 		hashp->hctl = NULL;
 		hashp->dir = NULL;
-		hashp->hcxt = CurrentDynaHashCxt;
 		hashp->isshared = false;
 	}
 
 	if (!hashp->hctl)
 	{
-		hashp->hctl = (HASHHDR*)hashp->alloc(sizeof(HASHHDR));
+		hashp->hctl = (HASHHDR*)hashp->alloc(hashp->hcxt, sizeof(HASHHDR));
 		if (!hashp->hctl)
 		{
 #if 0
@@ -1103,8 +1126,7 @@ static bool element_alloc(HTAB* hashp, int nelem, int freelist_idx)
 	/* Each element has a HASHELEMENT header plus user data. */
 	elementSize = MAXALIGN(sizeof(HASHELEMENT)) + MAXALIGN(hctl->entrysize);
 
-	CurrentDynaHashCxt = hashp->hcxt;
-	firstElement = (HASHELEMENT*)hashp->alloc(nelem * elementSize);
+	firstElement = (HASHELEMENT*)hashp->alloc(hashp->hcxt, nelem * elementSize);
 
 	if (!firstElement)
 		return false;
@@ -1540,16 +1562,17 @@ void* hash_search_with_hash_value(HTAB* hashp, const void* keyPtr, uint32 hashva
  */
 void* hash_search(HTAB* hashp, const void* keyPtr, HASHACTION action, bool* foundPtr)
 {
+	void* ret = NULL;
 	if (hashp)
 	{
 		uint32 hashvalue;
 
 		hashvalue = hashp->hash(keyPtr, hashp->keysize);
 
-		return hash_search_with_hash_value(hashp, keyPtr, hashvalue, action, foundPtr);
+		ret = hash_search_with_hash_value(hashp, keyPtr, hashvalue, action, foundPtr);
 	}
 
-	return NULL;
+	return ret;
 }
 
 /*
@@ -1601,8 +1624,8 @@ static bool dir_realloc(HTAB* hashp)
 	new_dirsize = new_dsize * sizeof(HASHSEGMENT);
 
 	old_p = hashp->dir;
-	CurrentDynaHashCxt = hashp->hcxt;
-	p = (HASHSEGMENT*)hashp->alloc((Size)new_dirsize);
+
+	p = (HASHSEGMENT*)hashp->alloc(hashp->hcxt, (Size)new_dirsize);
 
 	if (p != NULL)
 	{
@@ -1613,12 +1636,10 @@ static bool dir_realloc(HTAB* hashp)
 
 		/* XXX assume the allocator is palloc, so we know how to free */
 		Assert(hashp->alloc == DynaHashAlloc);
-		pfree(old_p);
+		wt_pfree(old_p);
 
 		return true;
 	}
 
 	return false;
 }
-
-#endif 

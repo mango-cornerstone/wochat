@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "mosquitto.h"
+#include "wochatdef.h"
 #include "wochat.h"
 #include "wt_base64.h"
 #include "wt_utils.h"
@@ -133,14 +134,22 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 {
 	assert(task);
 	MessageTask* node = task->node;
+	U8 Kp[32] = { 0 };
+	U8 topic[67] = { 0 };
+	U8* msssage_b64;
+	U32 length_b64;
 
-	if (node)
+	if (!node)
+		return 0;
+
+	// get the primary key between the sender and the receiver
+	GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, Kp);
+
+	if (node->type == 'T')
 	{
 		U8 offset = 0;
 		U8* message_raw;
-		U8* msssage_b64;
 		U32 length_raw;
-		U32 length_b64;
 
 		if (node->msgLen < 252) // we keep the minimal size to 252 bytes to make it harder for the attacker
 		{
@@ -156,9 +165,6 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 		message_raw = (U8*)wt_palloc(pool, length_raw);
 		if (message_raw)
 		{
-			U8* p;
-			U8* q;
-			U32* p32;
 			U8 idx;
 			U32 i, crcKs, crcHash;
 			wt_chacha20_context cxt = { 0 };
@@ -166,42 +172,45 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			AES256_ctx ctxAES1 = { 0 };
 			U8 hash[32] = { 0 };
 			U8 Ks[32] = { 0 };
-			U8 Kp[32] = { 0 };
+			
 			U8 nonce[12] = { 0 };
-			U8 topic[67] = { 0 };
-
-			GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, Kp);
-
+		
 			wt_sha256_hash(node->message, node->msgLen, hash); // generate the SHA256 hash of the original message
-
 			wt_FillRandomData(Ks, 32); // genarate the session key
 
+			// generate the CRC value of the session key
 			INIT_CRC32C(crcKs);
 			COMP_CRC32C(crcKs, Ks, 32);
-			FIN_CRC32C(crcKs);  // generate the CRC value of the session key
+			FIN_CRC32C(crcKs);  
 
-			p = message_raw;
+			U8* p = message_raw;
 
+			// the first 32 bytes contain the encrypted session key. Ks : key session
 			wt_AES256_init(&ctxAES0, Kp);
-			wt_AES256_encrypt(&ctxAES0, 2, p, Ks);
+			wt_AES256_encrypt(&ctxAES0, 2, p, Ks); 
 
+			// the second 32 bytes contain the encrypted SHA256 of the original message.
 			wt_AES256_init(&ctxAES1, Kp);
-			wt_AES256_encrypt(&ctxAES1, 2, p+32, hash);
+			wt_AES256_encrypt(&ctxAES1, 2, p+32, hash); 
 
+			// generate the CRC value of the encrypted SHA256
 			INIT_CRC32C(crcHash);
 			COMP_CRC32C(crcHash, p+32, 32);
-			FIN_CRC32C(crcHash);  // generate the CRC value of the encrypted SHA256
+			FIN_CRC32C(crcHash);  
 
-			p[64] = 1; // the version byte
+			// handle the next 4 bytes
+			p[64] = WT_ENCRYPTION_VERION; // the version byte
 			p[65] = node->type; // the data type byte
 			idx = wt_GenRandomU8(offset); // a random offset
 			p[66] = idx;
 			p[67] = 'X'; // reserved byte
 
-			p32 = (U32*)(p + 68);
+			// save the original message length in the next 4 bytes
+			U32* p32 = (U32*)(p + 68);
 			*p32 = node->msgLen;
 
-			q = (U8*)&crcHash;
+			// mask the 8 bytes to make it a little bit harder for the attacker :-)
+			U8* q = (U8*)&crcHash;
 			for (i = 0; i < 4; i++) p[64 + i] ^= q[i];
 
 			q = (U8*)&crcKs;
@@ -210,36 +219,107 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			if (offset) // the original message is less than 252 bytes, we fill the random data in the 252 bytes
 				wt_FillRandomData(p + 72, length_raw - 72);
 
+			// save the original message
 			memcpy(p + 72 + idx, node->message, node->msgLen);
 
 			wt_chacha20_init(&cxt);
-			wt_chacha20_setkey(&cxt, Ks);
+			wt_chacha20_setkey(&cxt, Ks); // use the session key as the key for Chacha20 encryption algorithm.
 			for (i = 0; i < 12; i++) nonce[i] = i;
 			wt_chacha20_starts(&cxt, nonce, 0);
-			wt_chacha20_update(&cxt, length_raw - 32, (const unsigned char*)(p+32), p + 32);  // encrypt the message!
+			// encrypt the message except the first 32 bytes, because the first 32 bytes contain the encrypted session key
+			wt_chacha20_update(&cxt, length_raw - 32, (const unsigned char*)(p+32), p + 32);  
 			wt_chacha20_free(&cxt);
 
+			// we complete the raw message, so conver the raw message to base64 encoding string, and with a zero at the end
 			length_b64 = wt_b64_enc_len(length_raw);
 			msssage_b64 = (U8*)wt_palloc(pool, 89 + length_b64 + 1); // zero terminated
 			if (msssage_b64)
 			{
+				int rc;
 				p = msssage_b64;
+				// the first 44 bytes are the public key of the sender
 				wt_b64_encode((const char*)g_PK, 33, (char*)p, 44);
+				// the second 44 bytes are the public key of the receiver
 				wt_b64_encode((const char*)node->pubkey, 33, (char*)(p+44), 44);
-				p[88] = '|';
-				wt_b64_encode((const char*)message_raw, length_raw, (char*)(p + 89), length_b64);
-				msssage_b64[length_b64 + 89] = '\0'; // make the last byte to be zero
+				
+				p[88] = '|';  // this is the seperator character to indicate the message type
 
-				wt_Raw2HexString(node->pubkey, 33, topic, nullptr);
-				if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 89 + 1, msssage_b64, 1, false, NULL))
+				// convert the raw message to base64 encoding string
+				rc = wt_b64_encode((const char*)message_raw, length_raw, (char*)(p + 89), length_b64);
+				if (rc == length_b64)
 				{
-					InterlockedIncrement(&(node->state)); // we have processed this task
+					msssage_b64[length_b64 + 89] = '\0'; // make the last byte to be zero
+					
+					// the receiver's public key is also the topic of MQTT 
+					wt_Raw2HexString(node->pubkey, 33, topic, nullptr); 
+
+					// send out the message by using MQTT protocol
+					if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 89 + 1, msssage_b64, 1, false, NULL))
+					{
+						InterlockedIncrement(&(node->state)); // we have processed this task
+					}
 				}
 				wt_pfree(msssage_b64);
 			}
 			wt_pfree(message_raw);
 		}
 	}
+
+	if (node->type == 'C') // confirmation message
+	{
+		length_b64 = 44 + 44 + 1 + 44 + 1; // zero terminated
+		msssage_b64 = (U8*)wt_palloc(pool, length_b64); 
+		if (msssage_b64)
+		{
+			U8  Xor;
+			U32 crcKp;
+			AES256_ctx ctxAES = { 0 };
+			U8 p[33];
+
+			{
+				INIT_CRC32C(crcKp);
+				COMP_CRC32C(crcKp, Kp, 32);
+				FIN_CRC32C(crcKp);
+
+				U8* q = (U8*)&crcKp;
+				for (int i = 0; i < 4; i++)
+				{
+					Xor = q[i];
+					if (Xor)
+						break;
+				}
+				if (0 == Xor)
+					Xor = 0xFF;
+
+				p[0] = 'C' ^ Xor;
+			}
+
+			wt_AES256_init(&ctxAES, Kp);
+			wt_AES256_encrypt(&ctxAES, 2, p + 1, node->hash);
+
+			// the first 44 bytes are the public key of the sender
+			wt_b64_encode((const char*)g_PK, 33, (char*)msssage_b64, 44);
+			// the second 44 bytes are the public key of the receiver
+			wt_b64_encode((const char*)node->pubkey, 33, (char*)(msssage_b64 + 44), 44);
+
+			msssage_b64[88] = '#';
+
+			wt_b64_encode((const char*)p, 33, (char*)(msssage_b64 + 89), 44);
+
+			msssage_b64[length_b64 - 1] = '\0';
+
+			// the receiver's public key is also the topic of MQTT 
+			wt_Raw2HexString(node->pubkey, 33, topic, nullptr);
+
+			// send out the message by using MQTT protocol
+			if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64, msssage_b64, 1, false, NULL))
+			{
+				InterlockedIncrement(&(node->state)); // we have processed this task
+			}
+			wt_pfree(msssage_b64);
+		}
+	}
+
 	return 0;
 }
 
@@ -434,8 +514,12 @@ extern "C"
 {
 	static void MQTT_Message_Callback(struct mosquitto* mosq, void* obj, const struct mosquitto_message* message, const mosquitto_property* properties)
 	{
+		int rc;
 		HWND hWndUI;
 		MemoryPoolContext pool;
+		U8 Kp[32] = { 0 };
+		U8 pkSender[33] = { 0 };
+		U8 pkReceiver[33] = { 0 };
 		U8* msssage_b64;
 		U32 length_b64;
 		MQTTConf* conf = (MQTTConf*)obj;
@@ -459,33 +543,31 @@ extern "C"
 		if (msssage_b64[88] != '|' && msssage_b64[88] != '#') // the 88th bytes is spearated character
 			return;
 
+		rc = wt_b64_decode((const char*)msssage_b64, 44, (char*)pkSender, 33);
+		if (rc != 33)
+			return;
+		rc = wt_b64_decode((const char*)(msssage_b64 + 44), 44, (char*)pkReceiver, 33);
+		if (rc != 33)
+			return;
+		if (memcmp(pkReceiver, g_PK, 33))
+			return;
+
+		GetKeyFromSecretKeyAndPlubicKey(g_SK, pkSender, Kp);
+
 		if (msssage_b64[88] == '|') // this is a common message packet
 		{
 			int rc;
 			U8* q;
 			U8* message_raw;
 			U32 length_raw;
-			U8 pkSender[33] = { 0 };
-			U8 pkReceiver[33] = { 0 };
 
 			q = msssage_b64;
-			rc = wt_b64_decode((const char*)q, 44, (char*)pkSender, 33);
-			if (rc != 33)
-				return;
-			rc = wt_b64_decode((const char*)(q + 44), 44, (char*)pkReceiver, 33);
-			if (rc != 33)
-				return;
-			if (memcmp(pkReceiver, g_PK, 33))
-				return;
-
 			length_raw = wt_b64_dec_len(length_b64 - 89 - 1);
 			message_raw = (U8*)wt_palloc(pool, length_raw);
 			if (message_raw)
 			{
 				U8 type, version, offset, reserved;
 				U32 i, length, crcKs, crcHash;
-				MessageTask* task;
-				U8 Kp[32] = { 0 };
 				U8 Ks[32] = { 0 };
 				U8 nonce[12] = { 0 };
 				U8 hash[32] = { 0 };
@@ -502,8 +584,6 @@ extern "C"
 					wt_pfree(message_raw);
 					return;
 				}
-
-				GetKeyFromSecretKeyAndPlubicKey(g_SK, pkSender, Kp);
 
 				wt_AES256_init(&ctxAES0, Kp);
 				wt_AES256_decrypt(&ctxAES0, 2, Ks, p);
@@ -542,7 +622,7 @@ extern "C"
 
 				if (0 == memcmp(hash, hash_org, 32)) // check the hash value is the same
 				{
-					task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
+					MessageTask* task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
 					if (task)
 					{
 						memcpy(task->pubkey, pkSender, 33);
@@ -561,6 +641,51 @@ extern "C"
 					}
 				}
 				wt_pfree(message_raw);
+			}
+		}
+
+		if (msssage_b64[88] == '#') // this is a common message packet
+		{
+			U8  Xor;
+			U32 crcKp;
+			AES256_ctx ctxAES = { 0 };
+			U8 p[33];
+			U8 hash[32];
+
+			rc = wt_b64_decode((const char*)(msssage_b64 + 89), 44, (char*)p, 33);
+			if (rc == 33)
+			{
+				INIT_CRC32C(crcKp);
+				COMP_CRC32C(crcKp, Kp, 32);
+				FIN_CRC32C(crcKp);
+
+				U8* q = (U8*)&crcKp;
+				for (int i = 0; i < 4; i++)
+				{
+					Xor = q[i];
+					if (Xor)
+						break;
+				}
+				if (0 == Xor)
+					Xor = 0xFF;
+
+				p[0] ^= Xor;
+
+				wt_AES256_init(&ctxAES, Kp);
+				wt_AES256_decrypt(&ctxAES, 2, hash, p+1);
+
+				if (p[0] == 'C')
+				{
+					MessageTask* task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
+					if (task)
+					{
+						memcpy(task->pubkey, pkSender, 33);
+						memcpy(task->hash, hash, 32);
+						task->type = 'C';
+						PushTaskIntoReceiveMessageQueue(task);
+						::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+					}
+				}
 			}
 		}
 	}
@@ -824,5 +949,19 @@ int InitWoChatDatabase(LPCWSTR lpszPath)
 
 	sqlite3_close(db);
 
+	return 0;
+}
+
+int SendConfirmationMessage(U8* pk, U8* hash)
+{
+	MessageTask* mt = (MessageTask*)wt_palloc0(g_messageMemPool, sizeof(MessageTask));
+	if (mt)
+	{
+		mt->type = 'C'; // confirmation
+		mt->state = MESSAGE_TASK_STATE_ONE;
+		memcpy(mt->pubkey, pk, 33);
+		memcpy(mt->hash, hash, 32);
+		PushTaskIntoSendMessageQueue(mt);
+	}
 	return 0;
 }

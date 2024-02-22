@@ -3,8 +3,9 @@
 
 #include "dui/dui_win.h"
 
-#define XMESSAGE_FROM_SHE  0x0000
-#define XMESSAGE_FROM_ME   0x0001
+#define XMESSAGE_FROM_SHE		0x0000
+#define XMESSAGE_FROM_ME		0x0001
+#define XMESSAGE_CONFIRMATION	0x0002
 
 #define XWIN4_MARGIN	  32
 #define XWIN4_OFFSET	  10
@@ -31,7 +32,7 @@ public:
 	XWindow4()
 	{
 		m_backgroundColor = 0xFFF5F5F5;
-		m_property |= (DUI_PROP_HASVSCROLL | DUI_PROP_HANDLEWHEEL | DUI_PROP_HANDLETEXT);
+		m_property |= (DUI_PROP_HASVSCROLL | DUI_PROP_HANDLEWHEEL | DUI_PROP_HANDLETEXT | DUI_PROP_LARGEMEMPOOL);
 		m_message = WM_XWINDOWS04;
 	}
 
@@ -128,6 +129,37 @@ public:
 		return r;
 	}
 
+	int UpdateMessageConfirmation(U8* pk, U8* hash)
+	{
+		int i, r = 0;
+		XMessage* xm;
+
+		if (nullptr == m_chatGroup)
+			return 0;
+
+		for (i = 0; i < 33; i++) // check the public key is the same or not
+		{
+			if (m_chatGroup->pubkey[i] != pk[i])
+				break;
+		}
+		if (i != 33) // if the public key is not the same, something is wrong
+			return 0;
+
+		xm = (XMessage*)hash_search(g_messageHTAB, hash, HASH_FIND, NULL);
+		if (xm)
+		{
+			XChatMessage* p = xm->pointer;
+			if (p)
+			{
+				p->state |= XMESSAGE_CONFIRMATION;
+				r++;
+			}
+		}
+		if (r)
+			InvalidateScreen();
+		return r;
+	}
+
 	void UpdateControlPosition() // the user has changed the width of this window
 	{
 		int w = m_area.right - m_area.left;
@@ -206,6 +238,8 @@ public:
 				return 0;
 			}
 
+			memcpy(p->hash, mt->hash, 32); // save the SHA256 value of this message
+
 			p->msgLen = (mt->msgLen - 4)/ sizeof(wchar_t);
 			text = (wchar_t*)(mt->message + 4);
 			for (U16 i = 0; i < p->msgLen; i++) // copy the text message
@@ -269,6 +303,15 @@ public:
 				m_ptOffset.y = (m_sizeAll.cy > h) ? (m_sizeAll.cy - h) : 0; // show the last message on the bottom
 			}
 
+			{
+				bool found = false;
+				XMessage* xm = (XMessage*)hash_search(g_messageHTAB, p->hash, HASH_ENTER, &found);
+				if (xm && !found)
+				{
+					xm->pointer = p;
+				}
+			}
+
 			InterlockedIncrement(&(mt->state)); // ok, we have successfully processed this message task
 
 			InvalidateScreen();
@@ -311,6 +354,8 @@ public:
 				return 0;
 			}
 
+			memcpy(p->hash, mt->hash, 32); // save the SHA256 value of this message
+
 			p->msgLen = (mt->msgLen - 4)/ sizeof(wchar_t);
 			text = (wchar_t*)(mt->message + 4);
 			for (U16 i = 0; i < p->msgLen; i++) // copy the text message
@@ -343,6 +388,7 @@ public:
 				SafeRelease(&pTextLayout);
 			}
 
+			//p->state = XMESSAGE_FROM_ME | XMESSAGE_CONFIRMATION;
 			p->state = XMESSAGE_FROM_ME;
 #if _DEBUG
 			p->icon = (U32*)xbmpHeadMe;
@@ -367,6 +413,15 @@ public:
 			{
 				m_sizeAll.cy += p->height;
 				m_ptOffset.y = (m_sizeAll.cy > h) ? (m_sizeAll.cy - h) : 0; // show the last message on the bottom
+			}
+
+			{  // insert this message into the hash table
+				bool found = false;
+				XMessage* xm = (XMessage*)hash_search(g_messageHTAB, p->hash, HASH_ENTER, &found);
+				if (xm && !found)
+				{
+					xm->pointer = p;
+				}
 			}
 
 			InterlockedIncrement(&(mt->state)); // ok, we have successfully processed this message task
@@ -397,6 +452,10 @@ public:
 					dy = pos - m_ptOffset.y;
 					x = (XMESSAGE_FROM_ME & p->state)? (w - m_scrollWidth - p->w - XWIN4_OFFSET) : XWIN4_OFFSET;
 					DUI_ScreenDrawRectRound(m_screen, w, h, (U32*)p->icon, p->w, p->h, x, dy, m_backgroundColor, m_backgroundColor);
+					if (XMESSAGE_CONFIRMATION & p->state)
+					{
+						DUI_ScreenDrawRect(m_screen, w, h, (U32*)xbmpOK, 10, 10, x-12, dy + 2);
+					}
 				}
 				pos += H;
 				if (pos >= m_ptOffset.y + h) // out of the scope of the drawing area
@@ -448,7 +507,7 @@ public:
 
 					if (isMe) // this message is from me
 					{
-						dx = w - p->width - 34 - m_scrollWidth - XWIN4_OFFSET - XWIN4_OFFSET;
+						dx = w - p->width - 38 - m_scrollWidth - XWIN4_OFFSET - XWIN4_OFFSET;
 					}
 
 					bkgarea.left = static_cast<FLOAT>(m_area.left + dx) - XWIN4_OFFSET - XWIN4_OFFSET;

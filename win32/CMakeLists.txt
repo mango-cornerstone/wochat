@@ -24,7 +24,7 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE ${PRECOMPILE_HEADER_FILES})
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
-target_link_libraries(${PROJECT_NAME} libwt libdui libsqlite libmosquitto_static secp256k1)
+target_link_libraries(${PROJECT_NAME} libwt libdui libmarkdown libsqlite libmosquitto_static secp256k1)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

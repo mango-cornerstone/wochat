@@ -52,7 +52,10 @@ LONG 				g_threadCount = 0;
 LONG				g_Quit = 0;
 LONG                g_NetworkStatus = 0;
 DWORD               g_dwMainThreadID  = 0;
+
 U32  				g_messageSequence = 0;
+HTAB*				g_messageHTAB = nullptr;
+MemoryPoolContext   g_messageMemPool = nullptr;
 
 // private key and public key
 U8*                 g_SK = nullptr;
@@ -65,6 +68,7 @@ HANDLE				g_MQTTPubEvent;
 HWND				g_hWndShareScreen = nullptr;
 HWND				g_hWndChatHistory = nullptr;
 HWND				g_hWndAudioCall = nullptr;
+
 
 CRITICAL_SECTION    g_csMQTTSub;
 CRITICAL_SECTION    g_csMQTTPub;
@@ -448,6 +452,7 @@ public:
 
 		if (0 == wParam)
 		{
+			int rc;
 			MQTTSubData* pd = &g_SubData;
 			MessageTask* p;
 
@@ -455,8 +460,24 @@ public:
 			p = pd->task;
 			while (p) // scan the link to find the message that has been processed
 			{
+				rc = 0;
 				if (MESSAGE_TASK_STATE_NULL == p->state) // this task is not processed yet.
-					ret += m_win4.UpdateReceivedMessage(p);
+				{
+					switch (p->type)
+					{
+					case 'T':
+						rc = m_win4.UpdateReceivedMessage(p);
+						if (rc)
+							SendConfirmationMessage(p->pubkey, p->hash); // send the confirmation to the sender that we got this message
+						break;
+					case 'C':
+						rc = m_win4.UpdateMessageConfirmation(p->pubkey, p->hash);
+						break;
+					default:
+						break;
+					}
+				}
+				ret += rc;
 				p = p->next;
 			}
 			LeaveCriticalSection(&g_csMQTTSub);
@@ -464,7 +485,7 @@ public:
 			if (ret)
 				Invalidate();
 		}
-		return 0;
+		return ret;
 	}
 
 	LRESULT OnSetCursor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
@@ -1250,44 +1271,7 @@ public:
 		InterlockedDecrement(&g_threadCount);
 		return dwRet;
 	}
-#if 0
-	// the share screen UI thread proc
-	static DWORD WINAPI ShareScreenUIThread(LPVOID lpData)
-	{
-		DWORD dwRet = 0;
-		RECT rw = { 0 };
-		MSG msg = { 0 };
-		wchar_t title[5] = { 0x5206, 0x4eab,0x5c4f, 0x5e55, 0};
 
-		InterlockedIncrement(&g_threadCount);
-
-		rw.left = 300; rw.top = 300; rw.right = rw.left + 1024; rw.bottom = rw.top + 768;
-		
-		XWinScreen winScreen;
-		winScreen.Create(NULL, rw, (LPCWSTR)title, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VISIBLE);
-		if (FALSE == winScreen.IsWindow())
-			goto ExitShareScreenUIThread;
-
-		winScreen.ShowWindow(SW_SHOW);
-
-		// Main message loop:
-		//while ((0 == g_Quit) && GetMessageW(&msg, nullptr, 0, 0))
-		while (GetMessageW(&msg, nullptr, 0, 0))
-		{
-			if (!TranslateAcceleratorW(msg.hwnd, 0, &msg))
-			{
-				TranslateMessage(&msg);
-				DispatchMessageW(&msg);
-			}
-		}
-
-		//winScreen.DestroyWindow();
-
-	ExitShareScreenUIThread:
-		InterlockedDecrement(&g_threadCount);
-		return dwRet;
-	}
-#endif 
 	DWORD m_dwCount = 0;
 	HANDLE m_arrThreadHandles[MAXIMUM_WAIT_OBJECTS - 1];
 	DWORD  m_arrThreadIDs[MAXIMUM_WAIT_OBJECTS - 1];
@@ -1623,11 +1607,30 @@ static int MemoryContextInit()
 			wt_Raw2HexString(hash+16, 11, g_MQTTSubClientId, nullptr); // The MQTT client Id is 23 bytes long
 		}
 	}
+
+	{
+		g_messageMemPool = wt_mempool_create("MessagePool", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+		if (!g_messageMemPool)
+			r = 1;
+	}
+	{
+		HASHCTL hctl;
+		hctl.keysize = 32; // the SHA256 is 32 bytes
+		hctl.entrysize = hctl.keysize + sizeof(void*);
+		g_messageHTAB = hash_create("MainMessageHTAB", 256, &hctl, HASH_ELEM | HASH_BLOBS);
+		if (!g_messageHTAB)
+			r = 1;
+	}
+
 	return r;
 }
 
 static void MemoryContextTerm()
 {
+	hash_destroy(g_messageHTAB);
+	g_messageHTAB = nullptr;
+	wt_mempool_destroy(g_messageMemPool);
+	g_messageMemPool = nullptr;
 	wt_mempool_destroy(ctxTop);
 	ctxTop = nullptr;
 }
