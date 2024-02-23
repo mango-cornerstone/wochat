@@ -2,4 +2,22 @@
 #define IDR_DEFAULTFONT			129
 #define IDR_ASCIIFONT           130
 
+#ifndef IDC_STATIC
+#define IDC_STATIC              -1
+#endif
 
+#define IDD_REGISTER			150	
+#define IDD_LOGIN				151	
+#define IDB_REGISTER			152
+#define IDB_OK					153
+#define IDB_CANCEL				154
+#define IDC_COMBO_NAME			155
+#define IDC_EDIT_PASSWORD		156
+#define IDC_EDIT_NAME			157
+#define IDB_CREATE				158
+#define IDC_EDIT_PASSWORD0		159
+#define IDC_EDIT_PASSWORD1		160
+
+#define IDC_STATIC_NAME			170
+#define IDC_STATIC_PWD0			171
+#define IDC_STATIC_PWD1			172

@@ -23,6 +23,7 @@ extern HTAB*             g_messageHTAB;
 extern MemoryPoolContext g_messageMemPool;
 
 extern HINSTANCE g_hInstance;
+extern wchar_t   g_AppPath[MAX_PATH + 1];
 
 extern HWND		 g_hWndShareScreen;
 extern HWND		 g_hWndChatHistory;
@@ -151,7 +152,7 @@ typedef struct XChatGroup
 	MemoryPoolContext mempool;
 } XChatGroup;
 
-int InitWoChatDatabase(LPCWSTR lpszPath);
+int OpenWoChatDatabase(LPCWSTR lpszPath);
 
 int PushTaskIntoSendMessageQueue(MessageTask* message_task);
 int GenPublicKeyFromSecretKey(U8* sk, U8* pk);
@@ -159,7 +160,10 @@ int GetReceiverPublicKey(void* parent, U8* pk);
 
 // send a confirmation to the sender
 int SendConfirmationMessage(U8* pk, U8* hash);
-
+int DoWoChatLoginOrRegistration(HINSTANCE hInstance);
+int CreateNewScretKey(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen);
 int GetSecretKey(U8* sk, U8* pk);
+
+U16 GetSecretKeyNumber();
 
 #endif // __WT_WOCHAT_H__

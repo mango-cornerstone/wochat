@@ -923,17 +923,27 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 
 #define SQL_STMT_MAX_LEN		1024
 
-int InitWoChatDatabase(LPCWSTR lpszPath)
+int OpenWoChatDatabase(LPCWSTR lpszPath)
 {
+	bool bNew = true;
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
 	int           rc;
-	wchar_t keyFile[MAX_PATH + 1] = { 0 };
-	wchar_t sql[SQL_STMT_MAX_LEN] = { 0 };
+	wchar_t dbFile[MAX_PATH + 1] = { 0 };
+	U8 sql[SQL_STMT_MAX_LEN] = { 0 };
 
-	swprintf((wchar_t*)keyFile, MAX_PATH, L"%s\\wt.db", lpszPath);
+	swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", lpszPath);
 
-	rc = sqlite3_open16(keyFile, &db);
+	{
+		WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+		if (GetFileAttributesExW(dbFile, GetFileExInfoStandard, &fileInfo) != 0)
+		{
+			if (!(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+				bNew = false;
+		}
+	}
+
+	rc = sqlite3_open16(dbFile, &db);
 
 	if (rc)
 	{
@@ -941,11 +951,19 @@ int InitWoChatDatabase(LPCWSTR lpszPath)
 		return -1;
 	}
 
-	_stprintf_s(sql, SQL_STMT_MAX_LEN,
-		L"CREATE TABLE config(id INTEGER PRIMARY KEY, idx INTEGER, intv INTEGER, charv VARCHAR(2048))");
-	rc = sqlite3_prepare16_v2(db, sql, -1, &stmt, NULL);
-	rc = sqlite3_step(stmt);
-	rc = sqlite3_finalize(stmt);
+	if (bNew)
+	{
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN,	"CREATE TABLE config(id INTEGER PRIMARY KEY, idx INTEGER, intv INTEGER, charv VARCHAR(2048))");
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		rc = sqlite3_step(stmt);
+		rc = sqlite3_finalize(stmt);
+
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN,
+			"CREATE TABLE keys(id INTEGER PRIMARY KEY AUTOINCREMENT,active CHAR(1), sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,name VARCHAR(128) NOT NULL UNIQUE)");
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		rc = sqlite3_step(stmt);
+		rc = sqlite3_finalize(stmt);
+	}
 
 	sqlite3_close(db);
 
@@ -965,3 +983,104 @@ int SendConfirmationMessage(U8* pk, U8* hash)
 	}
 	return 0;
 }
+
+U16 GetSecretKeyNumber()
+{
+	int count;
+	sqlite3* db;
+	sqlite3_stmt* stmt = NULL;
+	int           rc;
+	wchar_t dbFile[MAX_PATH + 1] = { 0 };
+	U8 sql[SQL_STMT_MAX_LEN] = { 0 };
+
+	swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
+	rc = sqlite3_open16(dbFile, &db);
+	if (rc)
+	{
+		sqlite3_close(db);
+		return 0;
+	}
+
+	sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT count(1) FROM keys WHERE active='Y'");
+	rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_ROW)
+	{
+		count = sqlite3_column_int(stmt, 0);
+	}
+	rc = sqlite3_finalize(stmt);
+
+	sqlite3_close(db);
+
+	return (U16)count;
+}
+
+int CreateNewScretKey(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
+{
+	U8 tries = 255;
+	int r = 1;
+	U8 hash[32] = { 0 };
+	U8 sk[32] = { 0 };
+	U8 skEncrypted[32] = { 0 };
+	U8 pk[33] = { 0 };
+	U8 utf8[128 + 1] = { 0 };
+	U8 utf8n[128 + 1] = { 0 };
+
+	U8 hexSK[65] = { 0 };
+	U8 hexPK[67] = { 0 };
+
+	while (r && tries)
+	{
+		r = wt_FillRandomData(sk, 32);
+		tries--;
+	}
+	if (r && 0 == tries) // we cannot generate the 32 bytes random data
+		return 1;
+
+	r = GenPublicKeyFromSecretKey(sk, pk);
+
+	r = WideCharToMultiByte(CP_UTF8, 0, pwd, plen, (LPSTR)utf8, 128, NULL, NULL);
+	r = WideCharToMultiByte(CP_UTF8, 0, name, nlen, (LPSTR)utf8n, 128, NULL, NULL);
+
+	wt_sha256_hash(utf8, r, hash); 
+
+	{
+		AES256_ctx ctxAES = { 0 };
+		wt_AES256_init(&ctxAES, hash);
+		wt_AES256_encrypt(&ctxAES, 2, skEncrypted, sk);
+	}
+
+	wt_Raw2HexString(skEncrypted, 32, hexSK, nullptr);
+	wt_Raw2HexString(pk, 33, hexPK, nullptr);
+
+	{
+		sqlite3* db;
+		sqlite3_stmt* stmt = NULL;
+		int           rc;
+		wchar_t dbFile[MAX_PATH + 1] = { 0 };
+		U8 sql[SQL_STMT_MAX_LEN] = { 0 };
+
+		swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
+		rc = sqlite3_open16(dbFile, &db);
+		if (rc)
+		{
+			sqlite3_close(db);
+			return 1;
+		}
+
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO keys(active,sk,pk,name) VALUES('Y','%s', '%s', '%s')",
+			hexSK, hexPK, utf8n);
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc)
+		{
+
+		}
+		rc = sqlite3_finalize(stmt);
+
+		sqlite3_close(db);
+	}
+
+	return 0;
+}
+

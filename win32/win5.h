@@ -403,7 +403,6 @@ public:
 							{
 								U32* p = (U32*)msgInput;
 								*p = ++g_messageSequence; // record the sequence
-								//msgInput[0] = 'A'; msgInput[1] = 'B'; msgInput[2] = 'C'; msgInput[3] = '\0';
 								mt->state = MESSAGE_TASK_STATE_NULL;
 								mt->next = nullptr;
 								mt->message = msgInput;

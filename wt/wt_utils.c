@@ -13,6 +13,7 @@
 #include "wt_utils.h"
 #include "wt_sha256.h"
 
+
 bool wt_IsAlphabetString(U8* str, U8 len)
 {
 	bool bRet = false;
@@ -182,13 +183,18 @@ U8 wt_GenRandomU8(U8 upper)
 {
 	U8 r = 0;
 
-	if (upper)
+	if (upper && upper != 0xFF)
 	{
 		U8 bit64[8] = { 0 };
 		if (0 == wt_FillRandomData(bit64, 8))
 		{
 			U64 p64 = *((U64*)bit64);
 			r = p64 % (upper + 1);
+		}
+		else
+		{
+			ULONGLONG tick = GetTickCount64();
+			r = tick % (upper + 1);
 		}
 	}
 	return r;
@@ -198,13 +204,18 @@ U32 wt_GenRandomU32(U32 upper)
 {
 	U32 r = 0;
 
-	if (upper)
+	if (upper && upper != 0xFFFFFFFF)
 	{
 		U8 bit64[8] = { 0 };
 		if (0 == wt_FillRandomData(bit64, 8))
 		{
 			U64 p64 = *((U64*)bit64);
 			r = p64 % (upper + 1);
+		}
+		else
+		{
+			ULONGLONG tick = GetTickCount64();
+			r = tick % (upper + 1);
 		}
 	}
 	return r;

@@ -111,8 +111,9 @@ int GetSecretKey(U8* sk, U8* pk)
 	return 0;
 }
 
+#if 0
 LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
+#endif
 /************************************************************************************************
 *  The layout of the Main Window
 *
@@ -1565,6 +1566,8 @@ static int GetApplicationPath(HINSTANCE hInstance)
 	if (i == 0)
 		iRet = 30;
 
+	OpenWoChatDatabase(g_AppPath);
+
 	return iRet;
 }
 
@@ -1640,6 +1643,14 @@ static int InitInstance(HINSTANCE hInstance)
 	int iRet = 0;
 	DWORD length = 0;
 	HRESULT hr = S_OK;
+
+	INITCOMMONCONTROLSEX iccex;
+	iccex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+	iccex.dwICC = ICC_STANDARD_CLASSES | ICC_USEREX_CLASSES;
+
+	BOOL bRet = InitCommonControlsEx(&iccex);
+	if (!bRet)
+		return 1;
 
 	iRet = MemoryContextInit();
 	if (iRet)
@@ -1773,8 +1784,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLi
 	}
 	else  // BLOCK: Run application
 	{
-		CWoChatThreadManager mgr;
-		iRet = mgr.Run(lpCmdLine, nShowCmd);
+		iRet = DoWoChatLoginOrRegistration(hInstance);
+		if (0 == iRet)
+		{
+			CWoChatThreadManager mgr;
+			iRet = mgr.Run(lpCmdLine, nShowCmd);
+		}
 	}
 
 ExitThisApplication:
@@ -1797,6 +1812,7 @@ int GetReceiverPublicKey(void* parent, U8* pk)
 	return r;
 }
 
+#if 0
 LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -1810,3 +1826,5 @@ LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return 0;
 
 }
+#endif
+

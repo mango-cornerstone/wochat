@@ -40,9 +40,16 @@ bool wt_IsHexString(U8* str, U8 len);
 
 bool wt_IsAlphabetString(U8* str, U8 len);
 
-/* generate a random number range from 0 .. upper, inclusive */
+/*
+ * generate a random number range from 0 .. upper, inclusive
+ * if upper is 0 or 0xFF, then return 0
+ */
 U8  wt_GenRandomU8(U8 upper);
-/* generate a random number range from 0 .. upper, inclusive */
+
+/* 
+ * generate a random number range from 0 .. upper, inclusive 
+ * if upper is 0 or 0xFFFFFFFF, then return 0
+ */
 U32 wt_GenRandomU32(U32 upper);
 
 #ifdef __cplusplus

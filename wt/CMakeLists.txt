@@ -8,6 +8,7 @@ file(GLOB LIBWT_SRC
 	"wt_chacha20.c"
 	"wt_sha256.c"
 	"wt_utils.c"
+	"wt_unicode.c"
 	)
 
 add_library(${PROJECT_NAME} ${LIBWT_SRC})
