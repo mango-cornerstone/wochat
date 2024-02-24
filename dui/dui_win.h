@@ -287,6 +287,8 @@ public:
     {
         m_status &= ~DUI_STATUS_VISIBLE;
 
+        UpdateSize(nullptr, nullptr);
+
         T* pT = static_cast<T*>(this);
         pT->PostWindowHide();
     }
@@ -295,10 +297,10 @@ public:
     void WindowShow()
     {
         m_status |= DUI_STATUS_VISIBLE;
-
         T* pT = static_cast<T*>(this);
         pT->PostWindowShow();
-
+        m_status |= DUI_STATUS_NEEDRAW;  // need to redraw this virtual window
+        InvalidateDUIWindow();           // set the gloabl redraw flag so next paint routine will do the paint work
     }
 
     bool PostWindowMessage(U32 message, U64 wParam = 0, U64 lParam = 0)
@@ -331,9 +333,11 @@ public:
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
                 assert(xctl->m_Id == i);
-                ctlStatus = (i != m_activeControl) ? status : XCONTROL_STATE_ACTIVE;
-                ret += xctl->setStatus(ctlStatus, mouse_event);
-                //xctl->clearProperty(XCONTROL_PROP_FOCUSE);
+                if (xctl->IsVisible())
+                {
+                    ctlStatus = (i != m_activeControl) ? status : XCONTROL_STATE_ACTIVE;
+                    ret += xctl->setStatus(ctlStatus, mouse_event);
+                }
             }
         }
         else
@@ -343,8 +347,8 @@ public:
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
                 assert(xctl->m_Id == i);
-                ret += xctl->setStatus(status, mouse_event);
-                //xctl->clearProperty(XCONTROL_PROP_FOCUSE);
+                if (xctl->IsVisible())
+                    ret += xctl->setStatus(status, mouse_event);
             }
         }
         return ret;
@@ -414,10 +418,8 @@ public:
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
                 assert(xctl->m_Id == i);
-                prop = xctl->getProperty();
-                if (prop & XCONTROL_PROP_HIDDEN) // we do not need to draw the control that is not visible
-                    continue;
-                xctl->DrawText(m_area.left, m_area.top, surface, brushText, brushSelText, brushCaret);
+                if (xctl->IsVisible())
+                    xctl->DrawText(m_area.left, m_area.top, surface, brushText, brushSelText, brushCaret);
             }
             // the derived class will draw its content
             T* pT = static_cast<T*>(this);
@@ -466,7 +468,8 @@ public:
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
                 assert(xctl->m_Id == i);
-                xctl->Draw(m_area.left, m_area.top);
+                if (xctl->IsVisible())
+                    xctl->Draw(m_area.left, m_area.top);
             }
             // the derived class will draw its content
             T* pT = static_cast<T*>(this);
@@ -498,8 +501,8 @@ public:
             XControl* xctl;
             int w = r->right - r->left;
             int h = r->bottom - r->top;
-            assert(w > 0);
-            assert(h > 0);
+            assert(w >= 0);
+            assert(h >= 0);
             for (int i = 0; i < m_maxControl; i++)
             {
                 xctl = m_controlArray[i];
@@ -527,7 +530,7 @@ public:
 
         if (bInMyArea && m_maxControl) // the mouse is hovering in my area and I also have the controls
         {
-            int id;
+            int id = -1;
             XControl* xctl;
             int dx = xPos - m_area.left;
             int dy = yPos - m_area.top;
@@ -535,13 +538,12 @@ public:
             {
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
-                id = xctl->DoMouseHover(dx, dy);
-                if (id >= 0)
-                    break;    // we find the control that is hovering
-            }
-            if (id >= 0)
-            {
-                id = -1;
+                if (xctl->IsVisible())
+                {
+                    id = xctl->DoMouseHover(dx, dy);
+                    if (id >= 0)
+                        break;    // we find the control that is hovering
+                }
             }
         }
 
@@ -557,7 +559,8 @@ public:
         {
             xctl = m_controlArray[i];
             assert(nullptr != xctl);
-            r += xctl->DoMouseLeave();
+            if (xctl->IsVisible())
+                r += xctl->DoMouseLeave();
         }
 
         if (DUI_PROP_HASVSCROLL & m_property) // handle the vertical bar
@@ -697,7 +700,8 @@ public:
             {
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
-                r += xctl->DoMouseMove(dx, dy, m_activeControl);
+                if (xctl->IsVisible())
+                    r += xctl->DoMouseMove(dx, dy, m_activeControl);
             }
         }
 
@@ -808,7 +812,8 @@ public:
             xctl = m_controlArray[i];
             assert(nullptr != xctl);
             assert(xctl->m_Id == i);
-            r += xctl->DoMouseLBClickDown(dx, dy, &idxActive);
+            if (xctl->IsVisible())
+                r += xctl->DoMouseLBClickDown(dx, dy, &idxActive);
         }
 
         if (idxActive >= 0)
@@ -881,7 +886,8 @@ public:
             xctl = m_controlArray[i];
             assert(nullptr != xctl);
             assert(xctl->m_Id == i);
-            r += xctl->DoMouseRBClickUp(dx, dy, xPos, yPos, m_hWnd);
+            if (xctl->IsVisible())
+                r += xctl->DoMouseRBClickUp(dx, dy, xPos, yPos, m_hWnd);
         }
 
         {
@@ -923,7 +929,8 @@ public:
             xctl = m_controlArray[i];
             assert(nullptr != xctl);
             assert(xctl->m_Id == i);
-            r += xctl->DoMouseLBClickUp(dx, dy, &idxActive);
+            if (xctl->IsVisible())
+                r += xctl->DoMouseLBClickUp(dx, dy, &idxActive);
         }
 
         if (DUI_PROP_BTNACTIVE & m_property) // this window has active button, just like radio button group
@@ -1023,7 +1030,8 @@ public:
                     xctl = m_controlArray[i];
                     assert(nullptr != xctl);
                     assert(xctl->m_Id == i);
-                    r += xctl->OnKeyBoard(uMsg, wParam, lParam);
+                    if (xctl->IsVisible())
+                        r += xctl->OnKeyBoard(uMsg, wParam, lParam);
                 }
 
                 T* pT = static_cast<T*>(this);
@@ -1052,7 +1060,8 @@ public:
                     xctl = m_controlArray[i];
                     assert(nullptr != xctl);
                     assert(xctl->m_Id == i);
-                    r += xctl->OnKeyBoard(uMsg, wParam, lParam);
+                    if (xctl->IsVisible())
+                        r += xctl->OnKeyBoard(uMsg, wParam, lParam);
                 }
 
                 T* pT = static_cast<T*>(this);
@@ -1079,7 +1088,8 @@ public:
                 xctl = m_controlArray[i];
                 assert(nullptr != xctl);
                 assert(xctl->m_Id == i);
-                r += xctl->OnTimer();
+                if (xctl->IsVisible())
+                    r += xctl->OnTimer();
             }
         }
 

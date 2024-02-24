@@ -53,15 +53,20 @@ LONG				g_Quit = 0;
 LONG                g_NetworkStatus = 0;
 DWORD               g_dwMainThreadID  = 0;
 
-U8*					g_myImage = nullptr;
 U32  				g_messageSequence = 0;
 HTAB*				g_messageHTAB = nullptr;
 HTAB*               g_keyHTAB = nullptr;
 MemoryPoolContext   g_messageMemPool = nullptr;
+MemoryPoolContext   g_topMemPool = nullptr;
+
+wchar_t*            g_myName = nullptr;
+U8*                 g_myImage32 = nullptr;
+U8*                 g_myImage128 = nullptr;
 
 // private key and public key
 U8*                 g_SK = nullptr;
 U8*                 g_PK = nullptr;
+
 U8*                 g_PKTo = nullptr;
 U8*                 g_MQTTPubClientId = nullptr;
 U8*                 g_MQTTSubClientId = nullptr;
@@ -99,8 +104,6 @@ CAtlWinModule _Module;
 static HMODULE hDLLD2D{};
 static HMODULE hDLLDWrite{};
 
-static MemoryPoolContext ctxTop = nullptr;
-
 IDWriteTextFormat* GetTextFormat(U8 idx)
 {
 	if (idx < 8)
@@ -113,6 +116,12 @@ int GetSecretKey(U8* sk, U8* pk)
 {
 	return 0;
 }
+
+// three background threads
+DWORD WINAPI LoadingDataThread(LPVOID lpData);
+DWORD WINAPI MQTTSubThread(LPVOID lpData);
+DWORD WINAPI MQTTPubThread(LPVOID lpData);
+
 
 #if 0
 LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -157,6 +166,20 @@ private:
 	enum class DrapMode { dragModeNone, dragModeV, dragModeH };
 	DrapMode m_dragMode = DrapMode::dragModeNone;
 
+	enum class AppMode 
+	{ 
+		ModeMe,
+		ModeTalk,
+		ModeFriend,
+		ModeQuan,
+		ModeCoin,
+		ModeFavorite,
+		ModeFile,
+		ModeSetting
+	};
+
+	AppMode m_mode = AppMode::ModeTalk;
+
 	U32* m_screenBuff = nullptr;
 	U32  m_screenSize = 0;
 
@@ -183,6 +206,8 @@ private:
 	UINT m_nDPI = 96;
 	float m_deviceScaleFactor = 1.f;
 	U8 m_isInThisWindow = 0;
+
+	U8 m_loadingPercent = 0;
 
 	XWindow0 m_win0;
 	XWindow1 m_win1;
@@ -260,6 +285,7 @@ public:
 		MESSAGE_HANDLER(WM_GETMINMAXINFO, OnGetMinMaxInfo)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
+		MESSAGE_HANDLER(WM_LOADPERCENTMESSAGE, OnLoading)
 	END_MSG_MAP()
 
 	// this is the routine to process all window messages for win0/1/2/3/4/5
@@ -308,32 +334,27 @@ public:
 
 	LRESULT OnCreate(UINT, WPARAM, LPARAM, BOOL bHandled)
 	{
-		DWORD dwThreadID0;
-		DWORD dwThreadID1;
-		HANDLE hThread0;
-		HANDLE hThread1;
+		DWORD dwThreadID;
+		HANDLE hThread = nullptr;
+		XChatGroup* cg;
+		m_loadingPercent = 0;
 
-		// we create two threads. One thread for the MQTT subscription, and one for publication.
-		hThread0 = ::CreateThread(NULL, 0, MQTTSubThread, m_hWnd, 0, &dwThreadID0);
-#if 10
-		hThread1 = ::CreateThread(NULL, 0, MQTTPubThread, m_hWnd, 0, &dwThreadID1);
-
-		if (nullptr == hThread0 || nullptr == hThread1)
+		hThread = ::CreateThread(NULL, 0, LoadingDataThread, m_hWnd, 0, &dwThreadID);
+		if (nullptr == hThread)
 		{
-			MessageBox(TEXT("MQTT thread creation is failed!"), TEXT("WoChat Error"), MB_OK);
+			MessageBox(TEXT("Loading thread creation is failed!"), TEXT("WoChat Error"), MB_OK);
+			PostMessage(WM_CLOSE, 0, 0);
+			return 0;
 		}
-#endif
+
+		cg = m_win2.GetSelectedChatGroup();
+		if (cg)
 		{
-			XChatGroup* cg = m_win2.GetSelectedChatGroup();
-			if (cg)
-			{
-				//m_win3.UpdateTitle(cg->name);
-				m_win4.SetChatGroup(cg);
-			}
+			//m_win3.UpdateTitle(cg->name);
+			m_win4.SetChatGroup(cg);
 		}
 
 		m_nDPI = GetDpiForWindow(m_hWnd);
-
 		UINT_PTR id = SetTimer(XWIN_CARET_TIMER, 666);
 
 		return 0;
@@ -379,14 +400,41 @@ public:
 		return 0;
 	}
 
-	
 	LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
 		return 0;
 	}
 
+	LRESULT OnLoading(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+	{
+		m_loadingPercent = (U8)wParam;
+		Invalidate();
+
+		if (m_loadingPercent > 100) // the loading is completed
+		{
+			DWORD dwThreadID0;
+			DWORD dwThreadID1;
+			HANDLE hThread0;
+			HANDLE hThread1;
+			// we create two threads. One thread for the MQTT subscription, and one for publication.
+			hThread0 = ::CreateThread(NULL, 0, MQTTSubThread, m_hWnd, 0, &dwThreadID0);
+
+			hThread1 = ::CreateThread(NULL, 0, MQTTPubThread, m_hWnd, 0, &dwThreadID1);
+
+			if (nullptr == hThread0 || nullptr == hThread1)
+			{
+				MessageBox(TEXT("MQTT thread creation is failed!"), TEXT("WoChat Error"), MB_OK);
+			}
+		}
+
+		return 0;
+	}
+
 	LRESULT OnKeyDown(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100)
+			return 0;
+
 		if (::GetCapture() == m_hWnd)
 		{
 			bool bChanged = false;
@@ -498,7 +546,7 @@ public:
 
 		ClearDUIWindowCursor();
 
-		if (((HWND)wParam == m_hWnd) && (LOWORD(lParam) == HTCLIENT))
+		if (((HWND)wParam == m_hWnd) && (LOWORD(lParam) == HTCLIENT) && m_loadingPercent > 100)
 		{
 			DWORD dwPos = ::GetMessagePos();
 
@@ -523,19 +571,22 @@ public:
 
 	DrapMode IsOverSplitterBar(int x, int y) const
 	{
-		int width = SPLITLINE_WIDTH << 1;
-		if (!IsOverSplitterRect(x, y))
-			return DrapMode::dragModeNone;
-
-		ATLASSERT(m_splitterVPos > 0);
-		if ((x >= m_splitterVPos) && (x < (m_splitterVPos + width)))
-			return DrapMode::dragModeV;
-
-		if (m_splitterHPos > 0)
+		if (m_splitterVPos > 0)
 		{
-			if ((x >= m_splitterVPos + width) && (y >= m_splitterHPos) && (y < (m_splitterHPos + width)))
-				return DrapMode::dragModeH;
+			int width = SPLITLINE_WIDTH << 1;
+			if (!IsOverSplitterRect(x, y))
+				return DrapMode::dragModeNone;
+
+			if ((x >= m_splitterVPos) && (x < (m_splitterVPos + width)))
+				return DrapMode::dragModeV;
+
+			if (m_splitterHPos > 0)
+			{
+				if ((x >= m_splitterVPos + width) && (y >= m_splitterHPos) && (y < (m_splitterHPos + width)))
+					return DrapMode::dragModeH;
+			}
 		}
+
 		return DrapMode::dragModeNone;
 	}
 
@@ -559,6 +610,9 @@ public:
 	{
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
+
+		if (m_loadingPercent <= 100)
+			return 0;
 
 		if (DUIWindowInDragMode())
 		{
@@ -596,6 +650,9 @@ public:
 
 	LRESULT OnLButtonUp(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100)
+			return 0;
+
 		ClearDUIWindowLBtnDown();
 		if (::GetCapture() == m_hWnd)
 		{
@@ -616,44 +673,38 @@ public:
 	{
 		if (nullptr != m_screenBuff)
 		{
-			U32* dst;
 			U32  size;
-
-			// window 0 does not need to change
 			XRECT area;
-			XRECT* r;
-			XRECT* xr = m_win0.GetWindowArea();
+			XRECT* r = &area;
+			U32* dst = m_screenBuff;
 
-			area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
-			r = &area;
-
-			dst = m_screenBuff;
+			// windows 0
+			r->left = m_rectClient.left;
+			r->right = XWIN0_WIDTH;
+			r->top = m_rectClient.top;
+			r->bottom = m_rectClient.bottom;
+			m_win0.UpdateSize(r, dst);
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			dst += size;
-
 			// windows 1
 			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			m_win1.UpdateSize(r, dst);
 			dst += size;
-
 			// windows 2
 			r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			m_win2.UpdateSize(r, dst);
-
 			// windows 3
 			dst += size;
 			r->left = m_splitterVPos + SPLITLINE_WIDTH; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix1;
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			m_win3.UpdateSize(r, dst);
-
 			// windows 4
 			dst += size;
 			r->top = m_splitterHPosfix1 + SPLITLINE_WIDTH; r->bottom = m_splitterHPos;
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			m_win4.UpdateSize(r, dst);
-
 			// windows 5
 			dst += size;
 			r->top = m_splitterHPos + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
@@ -677,6 +728,9 @@ public:
 			tme.dwHoverTime = 3000; // in ms
 			TrackMouseEvent(&tme);
 		}
+
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
 
 		if (!DUIWindowInDragMode() && !DUIWindowLButtonDown())
 		{
@@ -747,16 +801,91 @@ public:
 
 	LRESULT OnWin0Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		bool bChanged = true;
+
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
 		if (wParam == 0)
 		{
 			U8 ctlId = (U8)lParam;
+			ClearDUIWindowLBtnDown();
+			switch (ctlId)
+			{
+			case XWIN0_BUTTON_ME:
+				m_mode = AppMode::ModeMe;
+				m_splitterHPosfix0 = 0;
+				m_splitterHPosfix1 = 0;
+				m_splitterVPos = 0;
+				m_splitterHPos = 0;
+				DoMeModeLayOut();
+				break;
+			case XWIN0_BUTTON_TALK:
+				m_mode = AppMode::ModeTalk;
+				m_splitterHPosfix0 = XWIN1_HEIGHT;
+				m_splitterHPosfix1 = XWIN3_HEIGHT;
+				m_splitterVPos = m_splitterVPosOld;
+				m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
+				DoTalkModeLayOut();
+				break;
+			case XWIN0_BUTTON_FRIEND:
+				m_mode = AppMode::ModeFriend;
+				break;
+			case XWIN0_BUTTON_QUAN:
+			case XWIN0_BUTTON_COIN:
+			case XWIN0_BUTTON_FAVORITE:
+			case XWIN0_BUTTON_FILE:
+			case XWIN0_BUTTON_SETTING:
+				m_mode = AppMode::ModeCoin;
+				m_splitterHPosfix0 = 0;
+				m_splitterHPosfix1 = 0;
+				m_splitterVPos = 0;
+				m_splitterHPos = 0;
+				DoTBDModeLayOut();
+				break;
+			default:
+				bChanged = false;
+				break;
+			}
 		}
+
+		if(bChanged)
+			Invalidate();
 
 		return 0;
 	}
 
+	U32 Win1ChangeIcon()
+	{
+
+		return WT_OK;
+	}
+
 	LRESULT OnWin1Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
+		if (wParam == 0)
+		{
+			U8 ctlId = (U8)lParam;
+			ClearDUIWindowLBtnDown();
+			switch (ctlId)
+			{
+			case XWIN1_BUTTON_MYICON:
+				{
+					WCHAR path[MAX_PATH + 1] = { 0 };
+					U32 rc = m_win1.SelectIconFile(path);
+					if (WT_OK == rc)
+					{
+						rc++;
+					}
+				}
+				break;
+			default:
+				break;
+			}
+		}
 		return 0;
 	}
 
@@ -777,6 +906,9 @@ public:
 
 	LRESULT OnWin4Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
 		switch (wParam)
 		{
 		case WIN4_UPDATE_MESSAGE:
@@ -838,6 +970,9 @@ public:
 
 	LRESULT OnWin5Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
 		if (wParam == 0)
 		{
 			U8 ctlId = (U8)lParam;
@@ -881,14 +1016,84 @@ public:
 		return 0;
 	}
 
+	U32	DoMeModeLayOut()
+	{
+		XRECT area;
+		XRECT* r;
+		XRECT* xr = m_win0.GetWindowArea();
+		area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
+		r = &area;
+
+		U32* dst = m_screenBuff;
+		U32 size = (U32)((r->right - r->left) * (r->bottom - r->top));
+		dst += size;
+
+		// windows 1
+		r->left = r->right;
+		r->right = m_rectClient.right;
+		r->top = m_rectClient.top;
+		r->bottom = m_rectClient.bottom;
+		size = (U32)((r->right - r->left) * (r->bottom - r->top));
+		m_win1.UpdateSize(r, dst);
+		m_win1.SetMode(WIN1_MODE_SHOWME);
+		m_win2.WindowHide();
+		m_win3.WindowHide();
+		m_win4.WindowHide();
+		m_win5.WindowHide();
+
+		return WT_OK;
+	}
+
+	U32	DoTalkModeLayOut()
+	{
+		m_win1.WindowShow();
+		m_win2.WindowShow();
+		m_win3.WindowShow();
+		m_win4.WindowShow();
+		m_win5.WindowShow();
+		AdjustDUIWindowPosition();
+		return WT_OK;
+	}
+
+	U32	DoFriendModeLayOut()
+	{
+		return WT_OK;
+	}
+
+	U32	DoTBDModeLayOut()
+	{
+		XRECT area;
+		XRECT* r;
+		XRECT* xr = m_win0.GetWindowArea();
+		area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
+		r = &area;
+
+		U32* dst = m_screenBuff;
+		U32 size = (U32)((r->right - r->left) * (r->bottom - r->top));
+		dst += size;
+
+		// windows 1
+		r->left = r->right;
+		r->right = m_rectClient.right;
+		r->top = m_rectClient.top;
+		r->bottom = m_rectClient.bottom;
+		size = (U32)((r->right - r->left) * (r->bottom - r->top));
+		m_win1.UpdateSize(r, dst);
+		m_win1.SetMode(WIN1_MODE_SHOWTBD);
+		m_win2.WindowHide();
+		m_win3.WindowHide();
+		m_win4.WindowHide();
+		m_win5.WindowHide();
+
+		return WT_OK;
+	}
+
+
 	LRESULT OnSize(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
-		ReleaseUnknown(m_pD2DRenderTarget);
-
 		if (SIZE_MINIMIZED != wParam)
 		{
-			XRECT area;
-			XRECT* r = &area;
+			ReleaseUnknown(m_pD2DRenderTarget);
 
 			GetClientRect(&m_rectClient);
 			ATLASSERT(0 == m_rectClient.left);
@@ -936,8 +1141,6 @@ public:
 				m_splitterVPosOld = m_splitterVPos;
 			}
 
-			m_splitterVPos = m_splitterVPosOld;
-
 			if (m_splitterHPos < 0)
 			{
 				m_splitterHPos = m_rectClient.bottom - m_rectClient.top - m_splitterHPosToBottom;
@@ -952,67 +1155,79 @@ public:
 				m_splitterHPosOld = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPos;
 			}
 
-			if (m_splitterHPos > 0) // if(m_splitterHPos <= 0) then windows 5 is hidden
+			switch (m_mode)
 			{
+			case AppMode::ModeTalk:
+				m_splitterHPosfix0 = XWIN1_HEIGHT;
+				m_splitterHPosfix1 = XWIN3_HEIGHT;
+				m_splitterVPos = m_splitterVPosOld;
 				m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
+				ATLASSERT(m_splitterVPos > 0);
+				ATLASSERT(m_splitterHPos > 0);
+				DoTalkModeLayOut();
+				break;
+			case AppMode::ModeFriend:
+				m_splitterHPosfix0 = XWIN1_HEIGHT;
+				m_splitterHPosfix1 = XWIN3_HEIGHT;
+				m_splitterVPos = m_splitterVPosOld;
+				m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
+				ATLASSERT(m_splitterVPos > 0);
+				ATLASSERT(m_splitterHPos > 0);
+				DoTalkModeLayOut();
+				break;
+			case AppMode::ModeQuan:
+			case AppMode::ModeCoin:
+			case AppMode::ModeFavorite:
+			case AppMode::ModeFile:
+			case AppMode::ModeSetting:
+				DoTBDModeLayOut();
+				break;
+			case AppMode::ModeMe:
+				m_splitterHPosfix0 = 0;
+				m_splitterHPosfix1 = 0;
+				m_splitterVPos = 0;
+				m_splitterHPos = 0;
+				DoMeModeLayOut();
+				break;
+			default:
+				ATLASSERT(0);
+				break;
 			}
-
-
-			if (nullptr != m_screenBuff)
-			{
-				U32* dst = m_screenBuff;
-				U32 size;
-
-				r->left = m_rectClient.left;
-				r->right = XWIN0_WIDTH;
-				r->top = m_rectClient.top;
-				r->bottom = m_rectClient.bottom;
-				m_win0.UpdateSize(r, dst);
-				size = (U32)((r->right - r->left) * (r->bottom - r->top));
-				dst += size;
-
-				r->left = XWIN0_WIDTH;
-				r->right = m_splitterVPos;
-				r->top = m_rectClient.top;
-				r->bottom = m_splitterHPosfix0;
-				m_win1.UpdateSize(r, dst);
-				size = (U32)((r->right - r->left) * (r->bottom - r->top));
-				dst += size;
-
-				r->left = XWIN0_WIDTH;
-				r->right = m_splitterVPos;
-				r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH;
-				r->bottom = m_rectClient.bottom;
-				m_win2.UpdateSize(r, dst);
-				size = (U32)((r->right - r->left) * (r->bottom - r->top));
-				dst += size;
-
-				r->left = m_splitterVPos + SPLITLINE_WIDTH;
-				r->right = m_rectClient.right;
-				r->top = m_rectClient.top;
-				r->bottom = m_splitterHPosfix1;
-				m_win3.UpdateSize(r, dst);
-				size = (U32)((r->right - r->left) * (r->bottom - r->top));
-				dst += size;
-
-				r->left = m_splitterVPos + SPLITLINE_WIDTH;
-				r->right = m_rectClient.right;
-				r->top = m_splitterHPosfix1 + SPLITLINE_WIDTH;
-				r->bottom = m_splitterHPos;
-				m_win4.UpdateSize(r, dst);
-				size = (U32)((r->right - r->left) * (r->bottom - r->top));
-				dst += size;
-
-				r->left = m_splitterVPos + SPLITLINE_WIDTH;
-				r->right = m_rectClient.right;
-				r->top = m_splitterHPos + SPLITLINE_WIDTH;
-				r->bottom = m_rectClient.bottom;
-				m_win5.UpdateSize(r, dst);
-			}
-
 			Invalidate();
 		}
 		return 0;
+	}
+
+	void ShowLoadingProgress(int left, int top, int right, int bottom)
+	{
+		int w = right - left;
+		int h = bottom - top;
+
+		ATLASSERT(w > 0 && h > 0);
+
+		if (w > 500 && h > 100)
+		{
+			int offset = m_loadingPercent * 5;
+			int L = (w - 500) >> 1;
+			int T = (h - 8) >> 1;
+			int R = L + 500;
+			int B = T + 8;
+
+			D2D1_RECT_F r1 = D2D1::RectF(static_cast<FLOAT>(L),	static_cast<FLOAT>(T), static_cast<FLOAT>(R), static_cast<FLOAT>(T+1));
+			m_pD2DRenderTarget->DrawBitmap(m_pixelBitmap1, &r1);
+
+			D2D1_RECT_F r2 = D2D1::RectF(static_cast<FLOAT>(L), static_cast<FLOAT>(B), static_cast<FLOAT>(R), static_cast<FLOAT>(B + 1));
+			m_pD2DRenderTarget->DrawBitmap(m_pixelBitmap1, &r2);
+
+			D2D1_RECT_F r3 = D2D1::RectF(static_cast<FLOAT>(L), static_cast<FLOAT>(T), static_cast<FLOAT>(L+1), static_cast<FLOAT>(B));
+			m_pD2DRenderTarget->DrawBitmap(m_pixelBitmap1, &r3);
+			
+			D2D1_RECT_F r4 = D2D1::RectF(static_cast<FLOAT>(R), static_cast<FLOAT>(T), static_cast<FLOAT>(R+1), static_cast<FLOAT>(B));
+			m_pD2DRenderTarget->DrawBitmap(m_pixelBitmap1, &r4);
+
+			D2D1_RECT_F r5 = D2D1::RectF(static_cast<FLOAT>(L), static_cast<FLOAT>(T), static_cast<FLOAT>(L + offset), static_cast<FLOAT>(B));
+			m_pD2DRenderTarget->DrawBitmap(m_pixelBitmap1, &r5);
+		}
 	}
 
 	void DrawSeperatedLines()
@@ -1076,23 +1291,12 @@ public:
 		return D2D1::SizeU(scaledWidth, scaledHeight);
 	}
 
-	HRESULT CreateDeviceDependantResource()
+	HRESULT CreateDeviceDependantResource(int left, int top, int right, int bottom)
 	{
 		HRESULT hr = S_OK;
 		if (nullptr == m_pD2DRenderTarget)  // Create a Direct2D render target.
 		{
 			RECT rc;
-			GetClientRect(&rc);
-#if 0
-			D2D1_PIXEL_FORMAT pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_IGNORE);
-			D2D1_RENDER_TARGET_PROPERTIES renderTargetProperties = D2D1::RenderTargetProperties();
-			renderTargetProperties.dpiX = m_nDPI;
-			renderTargetProperties.dpiY = m_nDPI;
-			renderTargetProperties.pixelFormat = pixelFormat;
-
-			D2D1_HWND_RENDER_TARGET_PROPERTIES hwndRenderTragetproperties
-				= D2D1::HwndRenderTargetProperties(m_hWnd, D2D1::SizeU(m_rectClient.right - m_rectClient.left, m_rectClient.bottom - m_rectClient.top));
-#endif
 			const int integralDeviceScaleFactor = GetFirstIntegralMultipleDeviceScaleFactor();
 			D2D1_RENDER_TARGET_PROPERTIES drtp{};
 			drtp.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
@@ -1103,6 +1307,7 @@ public:
 			// drtp.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_UNKNOWN);
 			drtp.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_IGNORE);
 
+			rc.left = left; rc.top = top; rc.right = right; rc.bottom = bottom;
 			D2D1_HWND_RENDER_TARGET_PROPERTIES dhrtp{};
 			dhrtp.hwnd = m_hWnd;
 			dhrtp.pixelSize = GetSizeUFromRect(rc, integralDeviceScaleFactor);
@@ -1122,7 +1327,7 @@ public:
 				ReleaseUnknown(m_pTextBrush0);
 				ReleaseUnknown(m_pTextBrush1);
 				ReleaseUnknown(m_pixelBitmap0);
-				//ReleaseUnknown(m_pixelBitmap1);
+				ReleaseUnknown(m_pixelBitmap1);
 				//ReleaseUnknown(m_pixelBitmap2);
 
 				U32 pixel[1] = { 0xFFEEEEEE };
@@ -1131,34 +1336,28 @@ public:
 					&m_pixelBitmap0);
 				if (S_OK == hr && nullptr != m_pixelBitmap0)
 				{
-#if 0
-					pixel[0] = 0xFFFFFFFF;
+					pixel[0] = 0xFF056608;
 					hr = m_pD2DRenderTarget->CreateBitmap(
 						D2D1::SizeU(1, 1), pixel, 4, D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
 						&m_pixelBitmap1);
-					ATLASSERT(S_OK == hr);
-
-					pixel[0] = 0xFF6AEA9E;
-					hr = m_pD2DRenderTarget->CreateBitmap(
-						D2D1::SizeU(1, 1), pixel, 4, D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
-						&m_pixelBitmap2);
-					ATLASSERT(S_OK == hr);
-#endif
-					hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pTextBrush0);
-					if (S_OK == hr && nullptr != m_pTextBrush0)
+					if (S_OK == hr && nullptr != m_pixelBitmap1)
 					{
-						hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pTextBrush1);
-						if (S_OK == hr && nullptr != m_pTextBrush1)
+						hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pTextBrush0);
+						if (S_OK == hr && nullptr != m_pTextBrush0)
 						{
-							hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x87CEFA), &m_pTextBrushSel);
-							if (S_OK == hr && nullptr != m_pTextBrushSel)
+							hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pTextBrush1);
+							if (S_OK == hr && nullptr != m_pTextBrush1)
 							{
-								hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pCaretBrush);
-								if (S_OK == hr && nullptr != m_pCaretBrush)
+								hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x87CEFA), &m_pTextBrushSel);
+								if (S_OK == hr && nullptr != m_pTextBrushSel)
 								{
-									hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x95EC6A), &m_pBkgBrush0);
-									if (S_OK == hr && nullptr != m_pBkgBrush0)
-										hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF), &m_pBkgBrush1);
+									hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x000000), &m_pCaretBrush);
+									if (S_OK == hr && nullptr != m_pCaretBrush)
+									{
+										hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0x95EC6A), &m_pBkgBrush0);
+										if (S_OK == hr && nullptr != m_pBkgBrush0)
+											hr = m_pD2DRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0xFFFFFF), &m_pBkgBrush1);
+									}
 								}
 							}
 						}
@@ -1176,10 +1375,14 @@ public:
 		PAINTSTRUCT ps;
 		BeginPaint(&ps);
 
-		HRESULT hr = CreateDeviceDependantResource();
+		RECT rc;
+		GetClientRect(&rc);
+
+		HRESULT hr = CreateDeviceDependantResource(rc.left, rc.top, rc.right, rc.bottom);
 
 		if (S_OK == hr && nullptr != m_pD2DRenderTarget 
-			&& nullptr != m_pixelBitmap0 
+			&& nullptr != m_pixelBitmap0
+			&& nullptr != m_pixelBitmap1
 			&& nullptr != m_pTextBrush0 
 			&& nullptr != m_pTextBrush1 
 			&& nullptr != m_pTextBrushSel
@@ -1190,17 +1393,23 @@ public:
 			m_pD2DRenderTarget->BeginDraw();
 			////////////////////////////////////////////////////////////////////////////////////////////////////
 			//m_pD2DRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
-			//m_pD2DRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
-		
-			DrawSeperatedLines(); // draw seperator lines
+			if (m_loadingPercent > 100)
+			{
+				DrawSeperatedLines(); // draw seperator lines
 
-			// draw five windows
-			m0 += m_win0.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
-			m1 += m_win1.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
-			m2 += m_win2.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
-			m3 += m_win3.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
-			m4 += m_win4.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
-			m5 += m_win5.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+				// draw five windows
+				m0 += m_win0.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+				m1 += m_win1.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+				m2 += m_win2.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+				m3 += m_win3.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+				m4 += m_win4.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+				m5 += m_win5.Draw(m_pD2DRenderTarget, m_pTextBrush0, m_pTextBrushSel, m_pCaretBrush, m_pBkgBrush0, m_pBkgBrush1);
+			}
+			else
+			{
+				m_pD2DRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
+				ShowLoadingProgress(rc.left, rc.top, rc.right, rc.bottom);
+			}
 
 			hr = m_pD2DRenderTarget->EndDraw();
 			////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1210,7 +1419,7 @@ public:
 			}
 		}
 
-		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] drag: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, 1,
+		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] thread: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, (int)g_threadCount,
 			m0,m1,m2,m3,m4,m5);
 		::SetWindowTextW(m_hWnd, (LPCWSTR)xtitle);
 
@@ -1220,17 +1429,27 @@ public:
 
 	LRESULT OnEditBoxCopy(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
 		return 0;
 	}
 
 	LRESULT OnEditBoxCut(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 	{
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
 		return 0;
 	}
 
 	LRESULT OnEditBoxPaste(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 	{
-		int r = m_win5.DoEditBoxPaste();
+		int r;
+		if (m_loadingPercent <= 100) // the loading phase is not completed yet
+			return 0;
+
+		r = m_win5.DoEditBoxPaste();
 		if (r)
 			Invalidate();
 		return 0;
@@ -1543,6 +1762,23 @@ static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 		return (20 + idx);
 	}
 
+	idx = WT_TEXTFORMAT_OTHER;
+	hr = g_pDWriteFactory->CreateTextFormat(
+		L"Microsoft Yahei",
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		24.f,
+		L"en-US",
+		&(g_pTextFormat[idx])
+	);
+
+	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	{
+		return (20 + idx);
+	}
+
 	return 0;
 }
 
@@ -1567,7 +1803,12 @@ static int GetApplicationPath(HINSTANCE hInstance)
 	if (i == 0 || i > (MAX_PATH - 10))
 		return 30;
 
-	swprintf((wchar_t*)g_DBPath, MAX_PATH, L"%s\\wt.db", g_AppPath);
+	for (DWORD k = 0; k < i; k++)
+		g_DBPath[k] = g_AppPath[k];
+
+	g_DBPath[i] = L'\\';
+	g_DBPath[i+1] = L'w'; g_DBPath[i + 2] = L't'; g_DBPath[i + 3] = L'.'; g_DBPath[i + 4] = L'd'; g_DBPath[i + 5] = L'b';
+	g_DBPath[i+6] = L'\0';
 
 	if (WT_OK != CheckWoChatDatabase(g_DBPath))
 		iRet = 31;
@@ -1582,32 +1823,32 @@ static int GetApplicationPath(HINSTANCE hInstance)
  * This must be called before creating contexts or allocating memory in
  * contexts.  
  */
-static int MemoryContextInit()
+static U32 MemoryContextInit()
 {
-	int r = 1;
-	ATLASSERT(ctxTop == nullptr);
+	U32 ret = WT_FAIL;
 
-	ctxTop = wt_mempool_create("TopMemoryContext", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
-	if (ctxTop)
+	ATLASSERT(g_topMemPool == nullptr);
+	ATLASSERT(g_SK == nullptr);
+	ATLASSERT(g_PK == nullptr);
+	ATLASSERT(g_PKTo == nullptr);
+	ATLASSERT(g_MQTTPubClientId == nullptr);
+	ATLASSERT(g_MQTTSubClientId == nullptr);
+
+	g_topMemPool = wt_mempool_create("TopMemoryContext", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
+	if (g_topMemPool)
 	{
-		ATLASSERT(g_SK == nullptr);
-		ATLASSERT(g_PK == nullptr);
-		ATLASSERT(g_PKTo == nullptr);
-		ATLASSERT(g_MQTTPubClientId == nullptr);
-		ATLASSERT(g_MQTTSubClientId == nullptr);
-
-		g_SK   = (U8*)wt_palloc0(ctxTop, 32);
-		g_PK   = (U8*)wt_palloc0(ctxTop, 33);
-		g_PKTo = (U8*)wt_palloc0(ctxTop, 33);
-		g_MQTTPubClientId = (U8*)wt_palloc0(ctxTop, 23);
-		g_MQTTSubClientId = (U8*)wt_palloc0(ctxTop, 23);
+		g_SK   = (U8*)wt_palloc0(g_topMemPool, 32);
+		g_PK   = (U8*)wt_palloc0(g_topMemPool, 33);
+		g_PKTo = (U8*)wt_palloc0(g_topMemPool, 33);
+		g_MQTTPubClientId = (U8*)wt_palloc0(g_topMemPool, 23);
+		g_MQTTSubClientId = (U8*)wt_palloc0(g_topMemPool, 23);
 
 		if (g_SK && g_PK && g_PKTo && g_MQTTPubClientId && g_MQTTSubClientId)
 		{
 			U8 hash[32] = { 0 };
 			wt_HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
 			wt_HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
-			r = GenPublicKeyFromSecretKey(g_SK, g_PK);
+			ret = GenPublicKeyFromSecretKey(g_SK, g_PK);
 
 			wt_sha256_hash(g_SK, 32, hash);
 			wt_Raw2HexString(hash, 11, g_MQTTPubClientId, nullptr); // The MQTT client Id is 23 bytes long
@@ -1615,11 +1856,9 @@ static int MemoryContextInit()
 		}
 	}
 
-	{
-		g_messageMemPool = wt_mempool_create("MessagePool", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
-		if (!g_messageMemPool)
-			r = 1;
-	}
+	g_messageMemPool = wt_mempool_create("MessagePool", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
+	if (!g_messageMemPool)
+		ret = WT_MEMORY_POOL_ERROR;
 
 	{
 		HASHCTL hctl = { 0 };
@@ -1627,7 +1866,7 @@ static int MemoryContextInit()
 		hctl.entrysize = hctl.keysize + sizeof(void*);
 		g_messageHTAB = hash_create("MainMessageHTAB", 256, &hctl, HASH_ELEM | HASH_BLOBS);
 		if (!g_messageHTAB)
-			r = 1;
+			ret = WT_DYNAMIC_HASHTAB_ERR;
 	}
 
 #if 0
@@ -1681,7 +1920,7 @@ static int MemoryContextInit()
 		}
 	}
 #endif
-	return r;
+	return ret;
 }
 
 static void MemoryContextTerm()
@@ -1690,8 +1929,8 @@ static void MemoryContextTerm()
 	g_messageHTAB = nullptr;
 	wt_mempool_destroy(g_messageMemPool);
 	g_messageMemPool = nullptr;
-	wt_mempool_destroy(ctxTop);
-	ctxTop = nullptr;
+	wt_mempool_destroy(g_topMemPool);
+	g_topMemPool = nullptr;
 }
 
 static int InitInstance(HINSTANCE hInstance)
@@ -1700,7 +1939,8 @@ static int InitInstance(HINSTANCE hInstance)
 	DWORD length = 0;
 	HRESULT hr = S_OK;
 
-	g_myImage = (U8*)xbmpMe;
+	g_myImage32 = (U8*)xbmpIcon32;
+	g_myImage128 = (U8*)xbmpIcon128;
 
 	INITCOMMONCONTROLSEX iccex;
 	iccex.dwSize = sizeof(INITCOMMONCONTROLSEX);

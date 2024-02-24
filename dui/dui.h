@@ -379,10 +379,12 @@ public:
 
     void setPosition(int left_, int top_, int right_, int bottom_, bool inner = true)
     {
+#if 0
         assert(left_ >= 0);
         assert(top_ >= 0);
         assert(right_ >= left_);
         assert(bottom_ >= top_);
+#endif 
         if (inner)
         {
             m_left = left_;
@@ -403,10 +405,10 @@ public:
     void setPosition(int left_, int top_, bool inner = true)
     {
         int w, h;
-
+#if 0
         assert(left_ >= 0);
         assert(top_ >= 0);
-
+#endif
         if (inner)
         {
             w = m_right - m_left;
@@ -465,6 +467,19 @@ public:
         m_parentH = parentH;
     }
 
+    bool IsVisible()
+    {
+        return (0 == (XCONTROL_PROP_HIDDEN & m_property));
+    }
+
+    void HideMe(bool hide = true)
+    {
+        if(hide)
+            m_property |= XCONTROL_PROP_HIDDEN;
+        else
+            m_property &= ~XCONTROL_PROP_HIDDEN;
+    }
+
     bool IsOverMe(int xPos, int yPos, bool* inner = nullptr)
     {
         bool bRet = false;
@@ -494,22 +509,6 @@ public:
 
         if (!(XCONTROL_PROP_STATIC & m_property)) // the static control cannot change the status
         {
-#if 0
-            if (XCONTROL_PROP_EDIT & m_property) // for edit box
-            {
-                if (XCONTROL_STATE_PRESSED == m_status)
-                {
-                    if (XCONTROL_STATE_NORMAL == newStatus && XMOUSE_LBDOWN != mouse_event)
-                    {
-                        return 0;
-                    }
-                    if (XCONTROL_STATE_HOVERED == newStatus)
-                    {
-                        return 0;
-                    }
-                }
-            }
-#endif
             r = (m_status != newStatus) ? 1 : 0;
             m_statusPrev = m_status;
             m_status = newStatus;

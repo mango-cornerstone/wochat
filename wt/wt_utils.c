@@ -13,7 +13,6 @@
 #include "wt_utils.h"
 #include "wt_sha256.h"
 
-
 bool wt_IsAlphabetString(U8* str, U8 len)
 {
 	bool bRet = false;

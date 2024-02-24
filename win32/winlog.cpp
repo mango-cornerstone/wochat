@@ -218,11 +218,19 @@ INT_PTR RCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			if (checkIsGood)
 			{
-				if (WT_OK == CreateNewAccount(name, len, pwd0, len0))
+				U32 idxSk = 0xFFFFFFFF;
+				if (WT_OK == CreateNewAccount(name, len, pwd0, len0, &idxSk))
 				{
 					MessageBox(hWnd, txtCreateGood, _T("Good"), MB_OK);
-					loginResult = 0;
-					PostMessage(hWnd, WM_CLOSE, 0, 0);
+					if (WT_OK == OpenAccount(idxSk, (U16*)pwd0, (U32)len0))
+					{
+						loginResult = 0;
+						PostMessage(hWnd, WM_CLOSE, 0, 0);
+					}
+					else
+					{
+						MessageBox(hWnd, txtCannotOpenSK, _T("Bad"), MB_OK);
+					}
 				}
 			}
 		}
@@ -322,7 +330,10 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			HICON hIcon, hOld;
 			bLoginOnly = !bLoginOnly;
 			int offset = bLoginOnly ? 280 : 0;
-			SetWindowPos(hWnd, 0, 500, 300, WidthofLoginDlg - offset, HeightofLoginDlg, SWP_SHOWWINDOW);
+			RECT rcDlg;
+			::GetWindowRect(hWnd, &rcDlg);
+
+			SetWindowPos(hWnd, 0, rcDlg.left, rcDlg.top, WidthofLoginDlg - offset, HeightofLoginDlg, SWP_SHOWWINDOW);
 			hWndCtl = GetDlgItem(hWnd, IDB_REGISTER);
 			if (bLoginOnly)
 			{
@@ -332,6 +343,18 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					hIcon = (HICON)LoadImage(g_hInstance, MAKEINTRESOURCE(IDI_ICON16), IMAGE_ICON, 16, 16, 0);
 					hOld = (HICON)SendDlgItemMessage(hWnd, IDB_REGISTER, BM_SETIMAGE, IMAGE_ICON, (LPARAM)hIcon);
 					DestroyIcon(hOld);
+					hWndCtl = GetDlgItem(hWnd, IDC_EDIT_NAME);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, FALSE);
+					hWndCtl = GetDlgItem(hWnd, IDB_CREATE);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, FALSE);
+					hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, FALSE);
+					hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, FALSE);
 				}
 			}
 			else
@@ -342,6 +365,85 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					hIcon = (HICON)LoadImage(g_hInstance, MAKEINTRESOURCE(IDI_ICON18), IMAGE_ICON, 16, 16, 0);
 					hOld = (HICON)SendDlgItemMessage(hWnd, IDB_REGISTER, BM_SETIMAGE, IMAGE_ICON, (LPARAM)hIcon);
 					DestroyIcon(hOld);
+					hWndCtl = GetDlgItem(hWnd, IDC_EDIT_NAME);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, TRUE);
+					hWndCtl = GetDlgItem(hWnd, IDB_CREATE);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, TRUE);
+					hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, TRUE);
+					hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
+					if (hWndCtl)
+						EnableWindow(hWndCtl, TRUE);
+				}
+			}
+		}
+		break;
+	case IDB_CREATE:
+		{
+			int checkIsGood = 1;
+			int len, len0, len1;
+			wchar_t name[64 + 1] = { 0 };
+			wchar_t pwd0[64 + 1] = { 0 };
+			wchar_t pwd1[64 + 1] = { 0 };
+
+			hWndCtl = GetDlgItem(hWnd, IDC_EDIT_NAME);
+			len = GetWindowTextW(hWndCtl, name, 64);
+			if (0 == len)
+			{
+				MessageBox(hWnd, txtNameEmpty, _T("Bad"), MB_OK);
+				checkIsGood = 0;
+			}
+			else
+			{
+				hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
+				len0 = GetWindowTextW(hWndCtl, pwd0, 64);
+				hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
+				len1 = GetWindowTextW(hWndCtl, pwd1, 64);
+				if (len0 == 0 && len1 == 0)
+				{
+					MessageBox(hWnd, txtPWDEmpty, _T("Bad"), MB_OK);
+					checkIsGood = 0;
+				}
+				else
+				{
+					if (len0 != len1)
+					{
+						MessageBox(hWnd, txtPWDIsNotSame, _T("Bad"), MB_OK);
+						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
+						SetWindowTextW(hWndCtl, nullptr);
+						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
+						SetWindowTextW(hWndCtl, nullptr);
+						checkIsGood = 0;
+					}
+					else if (wmemcmp(pwd0, pwd1, len0))
+					{
+						MessageBox(hWnd, txtPWDIsNotSame, _T("Bad"), MB_OK);
+						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
+						SetWindowTextW(hWndCtl, nullptr);
+						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
+						SetWindowTextW(hWndCtl, nullptr);
+						checkIsGood = 0;
+					}
+				}
+			}
+			if (checkIsGood)
+			{
+				U32 idxSk = 0xFFFFFFFF;
+				if (WT_OK == CreateNewAccount(name, len, pwd0, len0, &idxSk))
+				{
+					MessageBox(hWnd, txtCreateGood, _T("Good"), MB_OK);
+					if (WT_OK == OpenAccount(idxSk, (U16*)pwd0, (U32)len0))
+					{
+						loginResult = 0;
+						PostMessage(hWnd, WM_CLOSE, 0, 0);
+					}
+					else
+					{
+						MessageBox(hWnd, txtCannotOpenSK, _T("Bad"), MB_OK);
+					}
 				}
 			}
 		}
@@ -461,6 +563,19 @@ INT_PTR LoginDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			hWndCtl = GetDlgItem(hWnd, IDC_COMBO_NAME);
 			if (hWndCtl)
 				LoginDialogAddUserName(hWndCtl);
+
+			hWndCtl = GetDlgItem(hWnd, IDC_EDIT_NAME);
+			if (hWndCtl)
+				EnableWindow(hWndCtl, FALSE);
+			hWndCtl = GetDlgItem(hWnd, IDB_CREATE);
+			if (hWndCtl)
+				EnableWindow(hWndCtl, FALSE);
+			hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
+			if (hWndCtl)
+				EnableWindow(hWndCtl, FALSE);
+			hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
+			if (hWndCtl)
+				EnableWindow(hWndCtl, FALSE);
 		}
 
 		ret = 1;

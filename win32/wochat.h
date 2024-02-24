@@ -19,11 +19,14 @@ extern LONG  g_Quit;
 extern LONG  g_NetworkStatus;
 extern DWORD g_dwMainThreadID;
 
-extern U8*               g_myImage;
+extern wchar_t*          g_myName;
+extern U8*               g_myImage32;
+extern U8*               g_myImage128;
 extern U32	             g_messageSequence;
 extern HTAB*             g_messageHTAB;
 extern HTAB*             g_keyHTAB;
 extern MemoryPoolContext g_messageMemPool;
+extern MemoryPoolContext g_topMemPool;
 
 extern HINSTANCE g_hInstance;
 extern wchar_t   g_AppPath[MAX_PATH + 1];
@@ -56,13 +59,9 @@ extern IDWriteFactory* g_pDWriteFactory;
 #define WT_TEXTFORMAT_USERNAME		6
 #define WT_TEXTFORMAT_OTHER			7
 
-IDWriteTextFormat* GetTextFormat(U8 idx);
-
-DWORD WINAPI MQTTSubThread(LPVOID lpData);
-DWORD WINAPI MQTTPubThread(LPVOID lpData);
-
 #define WM_MQTT_PUBMESSAGE		(WM_USER + 300)
 #define WM_MQTT_SUBMESSAGE		(WM_USER + 301)
+#define WM_LOADPERCENTMESSAGE	(WM_USER + 302)
 
 #define WM_WIN_MAINUITHREAD		(WM_USER + 400)
 #define WM_WIN_SCREENTHREAD		(WM_USER + 401)
@@ -167,11 +166,13 @@ int GetReceiverPublicKey(void* parent, U8* pk);
 // send a confirmation to the sender
 int SendConfirmationMessage(U8* pk, U8* hash);
 int DoWoChatLoginOrRegistration(HINSTANCE hInstance);
-U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen);
+U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx);
 U32 OpenAccount(U32 idx, U16* pwd, U32 len);
 
 int GetSecretKey(U8* sk, U8* pk);
 
 U16 GetSecretKeyNumber();
+
+IDWriteTextFormat* GetTextFormat(U8 idx);
 
 #endif // __WT_WOCHAT_H__

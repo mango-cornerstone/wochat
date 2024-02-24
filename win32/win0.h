@@ -47,14 +47,12 @@ private:
 		U8 id;
 		XBitmap* bmp;
 
-		int w = 48;
-		int h = 48;
-#if _DEBUG
-		id = XWIN0_BITMAP_ME;        bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpMe;        bmp->w = w; bmp->h = h;
-#else
-		id = XWIN0_BITMAP_ME;        bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpZ;        bmp->w = w; bmp->h = h;
-#endif
-		w = 32; h = 32;
+		int w = 32;
+		int h = 32;
+
+		//id = XWIN0_BITMAP_ME;        bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpDefaultIcon;  bmp->w = w; bmp->h = h;
+		id = XWIN0_BITMAP_ME;        bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)g_myImage32;  bmp->w = w; bmp->h = h;
+
 		id = XWIN0_BITMAP_TALKN;     bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpTalkN;     bmp->w = w; bmp->h = h;
 		id = XWIN0_BITMAP_TALKH;     bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpTalkH;     bmp->w = w; bmp->h = h;
 		id = XWIN0_BITMAP_TALKP;     bmp = &m_bitmapArray[id]; bmp->id = id; bmp->data = (U32*)xbmpTalkP;     bmp->w = w; bmp->h = h;

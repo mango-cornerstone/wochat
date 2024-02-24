@@ -838,7 +838,6 @@ InitWoChatDatabase(g_AppPath);
 U32 GenPublicKeyFromSecretKey(U8* sk, U8* pk)
 {
 	U32 ret = WT_FAIL;
-
 	secp256k1_context* ctx;
 
 	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
@@ -847,17 +846,20 @@ U32 GenPublicKeyFromSecretKey(U8* sk, U8* pk)
 		int return_val;
 		size_t len = 33;
 		U8 compressed_pubkey[33];
+		U8 randomize[32];
 		secp256k1_pubkey pubkey;
 
-		return_val = secp256k1_ec_pubkey_create(ctx, &pubkey, sk);
-		if (1 == return_val)
+		if (WT_OK == wt_GenerateNewSecretKey(randomize))
 		{
-			return_val = secp256k1_ec_pubkey_serialize(ctx, compressed_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED);
-			if (len == 33 && return_val == 1 && pk)
+			return_val = secp256k1_ec_pubkey_create(ctx, &pubkey, sk);
+			if (1 == return_val)
 			{
-				for (int i = 0; i < 33; i++)
-					pk[i] = compressed_pubkey[i];
-				ret = WT_OK;
+				return_val = secp256k1_ec_pubkey_serialize(ctx, compressed_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED);
+				if (len == 33 && return_val == 1 && pk)
+				{
+					for (int i = 0; i < 33; i++) pk[i] = compressed_pubkey[i];
+					ret = WT_OK;
+				}
 			}
 		}
 		secp256k1_context_destroy(ctx);
@@ -949,7 +951,7 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 	if (!bAvailabe) // it is the first time to create the DB, so we create the table structure
 	{
 		rc = sqlite3_prepare_v2(db,
-			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT, p INTEGER, a CHAR(1), dt INTEGER, sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm VARCHAR(128) NOT NULL UNIQUE, i BLOB)",
+			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT, p INTEGER, a CHAR(1), dt INTEGER, sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm VARCHAR(128) NOT NULL UNIQUE, i32 BLOB, i128 BLOB)",
 			-1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -994,11 +996,8 @@ U16 GetSecretKeyNumber()
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
 	int           rc;
-	wchar_t dbFile[MAX_PATH + 1] = { 0 };
 	U8 sql[SQL_STMT_MAX_LEN] = { 0 };
-
-	swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
-	rc = sqlite3_open16(dbFile, &db);
+	rc = sqlite3_open16(g_DBPath, &db);
 	if (rc)
 	{
 		sqlite3_close(db);
@@ -1019,11 +1018,13 @@ U16 GetSecretKeyNumber()
 	return (U16)count;
 }
 
-U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
+U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 {
-	U8 tries = 255;
+	int rc;
+	U8 tries;
 	U32 ret = WT_FAIL;
 	U32 len = 0;
+	U8 randomize[32];
 	U8 sk[32] = { 0 };
 	U8 skEncrypted[32] = { 0 };
 	U8 pk[33] = { 0 };
@@ -1034,17 +1035,55 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
 	U8* utf8Password;
 	AES256_ctx ctxAES = { 0 };
 
+	secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+	if (!ctx)
+		return WT_SECP256K1_CTX_ERROR;
+
+	/* Randomizing the context is recommended to protect against side-channel
+	 * leakage See `secp256k1_context_randomize` in secp256k1.h for more
+	 * information about it. This should never fail. */
+	if (WT_OK == wt_GenerateNewSecretKey(randomize))
+	{
+		rc = secp256k1_context_randomize(ctx, randomize);
+		assert(rc);
+	}
+	else
+	{
+		secp256k1_context_destroy(ctx);
+		return WT_RANDOM_NUMBER_ERROR;
+	}
+
 	// we try to generate a new secret key
-	while (ret && tries)
+	tries = 255;
+	while (tries)
 	{
 		ret = wt_GenerateNewSecretKey(sk);
+		rc = secp256k1_ec_seckey_verify(ctx, sk);
+		if (WT_OK == ret && 1 == rc)
+			break;
 		tries--;
 	}
-	
-	if (WT_OK != ret && 0 == tries) // we cannot generate the 32 bytes random data
-		return WT_SK_GENERATE_ERR;
 
-	ret = GenPublicKeyFromSecretKey(sk, pk);
+	if (0 == tries) // we cannot generate the 32 bytes secret key
+	{
+		secp256k1_context_destroy(ctx);
+		return WT_SK_GENERATE_ERR;
+	}
+
+	ret = WT_FAIL;  // now we get the SK, we need to generate the PK
+	{
+		secp256k1_pubkey pubkey;
+		size_t pklen = 33;
+		rc = secp256k1_ec_pubkey_create(ctx, &pubkey, sk);
+		if (1 == rc)
+		{
+			rc = secp256k1_ec_pubkey_serialize(ctx, pk, &pklen, &pubkey, SECP256K1_EC_COMPRESSED);
+			if (pklen == 33 && rc == 1)
+				ret = WT_OK;
+		}
+	}
+	/* This will clear everything from the context and free the memory */
+	secp256k1_context_destroy(ctx);
 
 	if (WT_OK != ret)
 		return WT_PK_GENERATE_ERR;
@@ -1095,14 +1134,11 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
 	{
 		sqlite3* db;
 		sqlite3_stmt* stmt = NULL;
-		int           rc;
-		wchar_t dbFile[MAX_PATH + 1] = { 0 };
 		U8 sql[SQL_STMT_MAX_LEN] = { 0 };
 
-		swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(p,a,sk,pk,nm,i) VALUES(0, 'Y','%s', '%s', (?), (?))", hexSK, hexPK);
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(p,a,sk,pk,nm,i32,i128) VALUES(0, 'Y','%s', '%s', (?), (?),(?))", hexSK, hexPK);
 
-		rc = sqlite3_open16(dbFile, &db);
+		rc = sqlite3_open16(g_DBPath, &db);
 		if (SQLITE_OK != rc)
 		{
 			sqlite3_close(db);
@@ -1114,12 +1150,34 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
 			rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, (int)len, SQLITE_TRANSIENT);
 			if (SQLITE_OK == rc)
 			{
-				rc = sqlite3_bind_blob(stmt, 2, g_myImage, (48 * 48 * sizeof(U32)), SQLITE_TRANSIENT);
+				rc = sqlite3_bind_blob(stmt, 2, g_myImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
 				if (SQLITE_OK == rc)
 				{
-					rc = sqlite3_step(stmt);
-					if (SQLITE_DONE == rc)
-						ret = WT_OK;
+					rc = sqlite3_bind_blob(stmt, 3, g_myImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
+					if (SQLITE_OK == rc)
+					{
+						rc = sqlite3_step(stmt);
+						if (SQLITE_DONE == rc)
+						{
+							sqlite3_finalize(stmt);
+							sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT id FROM k WHERE sk='%s' AND pk='%s'", hexSK, hexPK);
+							rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+							if (SQLITE_OK == rc)
+							{
+								rc = sqlite3_step(stmt);
+								if (SQLITE_ROW == rc)
+								{
+									U32 Idx = sqlite3_column_int(stmt, 0);
+									if (skIdx)
+										*skIdx = Idx;
+									ret = WT_OK;
+									sqlite3_finalize(stmt);
+									sqlite3_close(db);
+									goto ExitNewAccount;
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -1127,8 +1185,8 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
 		sqlite3_close(db);
 	}
 
+ExitNewAccount:
 	wt_pfree(utf8Name);
-
 	return ret;
 }
 
@@ -1159,23 +1217,19 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 		return WT_MEMORY_ALLOC_ERR;
 
 	ret = WT_FAIL;
-
 	{
 		sqlite3* db;
 		sqlite3_stmt* stmt = NULL;
-		int           rc;
-		wchar_t dbFile[MAX_PATH + 1] = { 0 };
-		U8 sql[SQL_STMT_MAX_LEN] = { 0 };
+		int  rc;
+		U8 sql[128] = { 0 };
 
-		swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
-
-		rc = sqlite3_open16(dbFile, &db);
+		rc = sqlite3_open16(g_DBPath, &db);
 		if (SQLITE_OK != rc)
 		{
 			sqlite3_close(db);
 			return WT_SQLITE_OPEN_ERR;
 		}
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT sk, pk FROM k WHERE id=%d", idx);
+		sprintf_s((char*)sql, 128, "SELECT sk,pk,nm,i32,i128 FROM k WHERE id=%d", idx);
 		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -1184,10 +1238,12 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 			{
 				U8* hexSK = (U8*)sqlite3_column_text(stmt, 0);
 				U8* hexPK = (U8*)sqlite3_column_text(stmt, 1);
-#if 0
-				U8* img = (U8*)sqlite3_column_blob(stmt, 2);
-				int bytes = sqlite3_column_bytes(stmt, 2);
-#endif 
+				U8* utf8Name = (U8*)sqlite3_column_text(stmt, 2);
+				U8* img32 = (U8*)sqlite3_column_blob(stmt, 3);
+				int bytes32 = sqlite3_column_bytes(stmt, 3);
+				U8* img128 = (U8*)sqlite3_column_blob(stmt, 4);
+				int bytes128 = sqlite3_column_bytes(stmt, 4);
+
 				size_t skLen = strlen((const char*)hexSK);
 				size_t pkLen = strlen((const char*)hexPK);
 				if (skLen == 64 && pkLen == 66)
@@ -1209,8 +1265,48 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 
 						if (WT_OK == GenPublicKeyFromSecretKey(sk, pk1))
 						{
-							if(0 == memcmp(pk0, pk1, 33))
+							if (0 == memcmp(pk0, pk1, 33)) // the public key is matched! so we are good
+							{
+								U8* icon;
+								U32 utf16len;
 								ret = WT_OK;
+
+								assert(g_SK);
+								assert(g_PK);
+
+								memcpy(g_SK, sk, 32);
+								memcpy(g_PK, pk0, 33);
+
+								size_t utf8len = strlen((const char*)utf8Name);
+								U32 status = wt_UTF8ToUTF16(utf8Name, (U32)utf8len, nullptr, &utf16len);
+								if (WT_OK == status)
+								{
+									g_myName = (wchar_t*)wt_palloc(g_topMemPool, (utf16len + 1) * sizeof(wchar_t));
+									if (g_myName)
+									{
+										wt_UTF8ToUTF16(utf8Name, (U32)utf8len, (U16*)g_myName, nullptr);
+										g_myName[utf16len] = L'\0';
+									}
+								}
+								if (bytes32 == MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32))
+								{
+									icon = (U8*)wt_palloc0(g_topMemPool, bytes32);
+									if (icon)
+									{
+										memcpy(icon, img32, bytes32);
+										g_myImage32 = icon;
+									}
+								}
+								if (bytes128 == MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32))
+								{
+									icon = (U8*)wt_palloc0(g_topMemPool, bytes128);
+									if (icon)
+									{
+										memcpy(icon, img128, bytes128);
+										g_myImage128 = icon;
+									}
+								}
+							}
 						}
 					}
 				}
@@ -1222,4 +1318,29 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 	}
 
 	return ret;
+}
+
+DWORD WINAPI LoadingDataThread(LPVOID lpData)
+{
+	U8 percentage;
+	HWND hWndUI = (HWND)(lpData);
+	ATLASSERT(::IsWindow(hWndUI));
+
+	InterlockedIncrement(&g_threadCount);
+
+	percentage = 0;
+	while (0 == g_Quit)
+	{
+		Sleep(100);
+
+		PostMessage(hWndUI, WM_LOADPERCENTMESSAGE, (WPARAM)percentage, 0);
+
+		percentage += 5;
+		if (percentage >= 110)
+			break;
+	}
+
+	InterlockedDecrement(&g_threadCount);
+
+	return 0;
 }
