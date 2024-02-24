@@ -31,10 +31,10 @@ bool wt_IsPublicKey(U8* str, const U8 len);
  *  fill the buffer of len bytes with random data
  *  return 0 if successful.
  */
-int wt_FillRandomData(U8* buf, U8 len);
+U32 wt_FillRandomData(U8* buf, U8 len);
 
 // generate a 32-byte random data. sk must be 32 bytes long
-int wt_GenerateSecretKey(U8* sk);
+U32 wt_GenerateNewSecretKey(U8* sk);
 
 bool wt_IsHexString(U8* str, U8 len);
 

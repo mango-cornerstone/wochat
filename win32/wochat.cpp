@@ -835,9 +835,10 @@ InitWoChatDatabase(g_AppPath);
 
 
 // we have the 32-byte secret key, we want to generate the public key, return 0 if successful
-int GenPublicKeyFromSecretKey(U8* sk, U8* pk)
+U32 GenPublicKeyFromSecretKey(U8* sk, U8* pk)
 {
-	int ret = 1;
+	U32 ret = WT_FAIL;
+
 	secp256k1_context* ctx;
 
 	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
@@ -849,16 +850,18 @@ int GenPublicKeyFromSecretKey(U8* sk, U8* pk)
 		secp256k1_pubkey pubkey;
 
 		return_val = secp256k1_ec_pubkey_create(ctx, &pubkey, sk);
-		return_val = secp256k1_ec_pubkey_serialize(ctx, compressed_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED);
-		if (len == 33)
+		if (1 == return_val)
 		{
-			for (int i = 0; i < 33; i++)
-				pk[i] = compressed_pubkey[i];
-			ret = 0;
+			return_val = secp256k1_ec_pubkey_serialize(ctx, compressed_pubkey, &len, &pubkey, SECP256K1_EC_COMPRESSED);
+			if (len == 33 && return_val == 1 && pk)
+			{
+				for (int i = 0; i < 33; i++)
+					pk[i] = compressed_pubkey[i];
+				ret = WT_OK;
+			}
 		}
 		secp256k1_context_destroy(ctx);
 	}
-
 	return ret;
 }
 
@@ -920,54 +923,55 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 	return 0;
 }
 
-
-#define SQL_STMT_MAX_LEN		1024
-
-int OpenWoChatDatabase(LPCWSTR lpszPath)
+U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 {
-	bool bNew = true;
+	U32 ret = WT_FAIL;
+	int rc;
+	bool bAvailabe = false;
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
-	int           rc;
-	wchar_t dbFile[MAX_PATH + 1] = { 0 };
-	U8 sql[SQL_STMT_MAX_LEN] = { 0 };
 
-	swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", lpszPath);
+	WIN32_FILE_ATTRIBUTE_DATA fileInfo;
 
+	if (GetFileAttributesExW(lpszPath, GetFileExInfoStandard, &fileInfo) != 0)
 	{
-		WIN32_FILE_ATTRIBUTE_DATA fileInfo;
-		if (GetFileAttributesExW(dbFile, GetFileExInfoStandard, &fileInfo) != 0)
-		{
-			if (!(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-				bNew = false;
-		}
+		if (!(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+			bAvailabe = true;
 	}
 
-	rc = sqlite3_open16(dbFile, &db);
-
-	if (rc)
+	rc = sqlite3_open16(lpszPath, &db);
+	if (SQLITE_OK != rc)
 	{
 		sqlite3_close(db);
-		return -1;
+		return WT_SQLITE_OPEN_ERR;
 	}
 
-	if (bNew)
+	if (!bAvailabe) // it is the first time to create the DB, so we create the table structure
 	{
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN,	"CREATE TABLE config(id INTEGER PRIMARY KEY, idx INTEGER, intv INTEGER, charv VARCHAR(2048))");
-		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
-		rc = sqlite3_step(stmt);
-		rc = sqlite3_finalize(stmt);
-
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN,
-			"CREATE TABLE keys(id INTEGER PRIMARY KEY AUTOINCREMENT,active CHAR(1), sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,name VARCHAR(128) NOT NULL UNIQUE)");
-		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
-		rc = sqlite3_step(stmt);
-		rc = sqlite3_finalize(stmt);
+		rc = sqlite3_prepare_v2(db,
+			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT, p INTEGER, a CHAR(1), dt INTEGER, sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm VARCHAR(128) NOT NULL UNIQUE, i BLOB)",
+			-1, &stmt, NULL);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_DONE == rc)
+				ret = WT_OK;
+		}
 	}
-
+	else
+	{
+		rc = sqlite3_prepare_v2(db, (const char*)"SELECT count(1) FROM k", -1, &stmt, NULL); 
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_ROW == rc)
+				ret = WT_OK;
+		}
+	}
+	sqlite3_finalize(stmt);
 	sqlite3_close(db);
 
-	return 0;
+	return ret;
 }
 
 int SendConfirmationMessage(U8* pk, U8* hash)
@@ -986,7 +990,7 @@ int SendConfirmationMessage(U8* pk, U8* hash)
 
 U16 GetSecretKeyNumber()
 {
-	int count;
+	int count = 0;
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
 	int           rc;
@@ -1001,7 +1005,7 @@ U16 GetSecretKeyNumber()
 		return 0;
 	}
 
-	sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT count(1) FROM keys WHERE active='Y'");
+	sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT count(1) FROM k WHERE p=0 AND a='Y'");
 	rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
 	rc = sqlite3_step(stmt);
 	if (rc == SQLITE_ROW)
@@ -1015,43 +1019,146 @@ U16 GetSecretKeyNumber()
 	return (U16)count;
 }
 
-int CreateNewScretKey(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
+U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
 {
 	U8 tries = 255;
-	int r = 1;
-	U8 hash[32] = { 0 };
+	U32 ret = WT_FAIL;
+	U32 len = 0;
 	U8 sk[32] = { 0 };
 	U8 skEncrypted[32] = { 0 };
 	U8 pk[33] = { 0 };
-	U8 utf8[128 + 1] = { 0 };
-	U8 utf8n[128 + 1] = { 0 };
-
+	U8 hash[32] = { 0 };
 	U8 hexSK[65] = { 0 };
 	U8 hexPK[67] = { 0 };
+	U8* utf8Name;
+	U8* utf8Password;
+	AES256_ctx ctxAES = { 0 };
 
-	while (r && tries)
+	// we try to generate a new secret key
+	while (ret && tries)
 	{
-		r = wt_FillRandomData(sk, 32);
+		ret = wt_GenerateNewSecretKey(sk);
 		tries--;
 	}
-	if (r && 0 == tries) // we cannot generate the 32 bytes random data
-		return 1;
+	
+	if (WT_OK != ret && 0 == tries) // we cannot generate the 32 bytes random data
+		return WT_SK_GENERATE_ERR;
 
-	r = GenPublicKeyFromSecretKey(sk, pk);
+	ret = GenPublicKeyFromSecretKey(sk, pk);
 
-	r = WideCharToMultiByte(CP_UTF8, 0, pwd, plen, (LPSTR)utf8, 128, NULL, NULL);
-	r = WideCharToMultiByte(CP_UTF8, 0, name, nlen, (LPSTR)utf8n, 128, NULL, NULL);
+	if (WT_OK != ret)
+		return WT_PK_GENERATE_ERR;
 
-	wt_sha256_hash(utf8, r, hash); 
+	ret = wt_UTF16ToUTF8((U16*)pwd, plen, nullptr, &len);
+	if (WT_OK != ret)
+		return WT_UTF16ToUTF8_ERR;
 
+	utf8Password = (U8*)wt_palloc(g_messageMemPool, len);
+	if (utf8Password)
 	{
-		AES256_ctx ctxAES = { 0 };
-		wt_AES256_init(&ctxAES, hash);
-		wt_AES256_encrypt(&ctxAES, 2, skEncrypted, sk);
+		ret = wt_UTF16ToUTF8((U16*)pwd, plen, utf8Password, &len);
+		if (WT_OK != ret)
+		{
+			wt_pfree(utf8Password);
+			return WT_UTF16ToUTF8_ERR;
+		}
+		wt_sha256_hash(utf8Password, len, hash); // we use the UTF8 password to hash the key to encrypt the secret key
+		wt_pfree(utf8Password);
 	}
+	else
+		return WT_MEMORY_ALLOC_ERR;
 
+	ret = wt_UTF16ToUTF8((U16*)name, nlen, nullptr, &len);
+	if (WT_OK != ret)
+		return WT_UTF16ToUTF8_ERR;
+
+	utf8Name = (U8*)wt_palloc(g_messageMemPool, len+1);
+	if (utf8Name)
+	{
+		ret = wt_UTF16ToUTF8((U16*)name, nlen, utf8Name, nullptr);
+		if (WT_OK != ret)
+		{
+			wt_pfree(utf8Name);
+			return WT_UTF16ToUTF8_ERR;
+		}
+		utf8Name[len] = '\0';
+	}
+	else
+		return WT_MEMORY_ALLOC_ERR;
+
+	wt_AES256_init(&ctxAES, hash);
+	wt_AES256_encrypt(&ctxAES, 2, skEncrypted, sk);
 	wt_Raw2HexString(skEncrypted, 32, hexSK, nullptr);
 	wt_Raw2HexString(pk, 33, hexPK, nullptr);
+
+	ret = WT_FAIL;
+	{
+		sqlite3* db;
+		sqlite3_stmt* stmt = NULL;
+		int           rc;
+		wchar_t dbFile[MAX_PATH + 1] = { 0 };
+		U8 sql[SQL_STMT_MAX_LEN] = { 0 };
+
+		swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(p,a,sk,pk,nm,i) VALUES(0, 'Y','%s', '%s', (?), (?))", hexSK, hexPK);
+
+		rc = sqlite3_open16(dbFile, &db);
+		if (SQLITE_OK != rc)
+		{
+			sqlite3_close(db);
+			return WT_SQLITE_OPEN_ERR;
+		}
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, (int)len, SQLITE_TRANSIENT);
+			if (SQLITE_OK == rc)
+			{
+				rc = sqlite3_bind_blob(stmt, 2, g_myImage, (48 * 48 * sizeof(U32)), SQLITE_TRANSIENT);
+				if (SQLITE_OK == rc)
+				{
+					rc = sqlite3_step(stmt);
+					if (SQLITE_DONE == rc)
+						ret = WT_OK;
+				}
+			}
+		}
+		sqlite3_finalize(stmt);
+		sqlite3_close(db);
+	}
+
+	wt_pfree(utf8Name);
+
+	return ret;
+}
+
+U32 OpenAccount(U32 idx, U16* pwd, U32 len)
+{
+	U32 ret = WT_FAIL;
+	U32 utf8len;
+	U8* utf8Password;
+	U8 hash[32];
+
+	ret = wt_UTF16ToUTF8(pwd, len, nullptr, &utf8len);
+	if (WT_OK != ret)
+		return WT_UTF16ToUTF8_ERR;
+
+	utf8Password = (U8*)wt_palloc(g_messageMemPool, utf8len);
+	if (utf8Password)
+	{
+		ret = wt_UTF16ToUTF8(pwd, len, utf8Password, &len);
+		if (WT_OK != ret)
+		{
+			wt_pfree(utf8Password);
+			return WT_UTF16ToUTF8_ERR;
+		}
+		wt_sha256_hash(utf8Password, len, hash); // we use the UTF8 password to hash the key to encrypt the secret key
+		wt_pfree(utf8Password);
+	}
+	else
+		return WT_MEMORY_ALLOC_ERR;
+
+	ret = WT_FAIL;
 
 	{
 		sqlite3* db;
@@ -1061,26 +1168,58 @@ int CreateNewScretKey(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen)
 		U8 sql[SQL_STMT_MAX_LEN] = { 0 };
 
 		swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
+
 		rc = sqlite3_open16(dbFile, &db);
-		if (rc)
+		if (SQLITE_OK != rc)
 		{
 			sqlite3_close(db);
-			return 1;
+			return WT_SQLITE_OPEN_ERR;
 		}
-
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO keys(active,sk,pk,name) VALUES('Y','%s', '%s', '%s')",
-			hexSK, hexPK, utf8n);
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT sk, pk FROM k WHERE id=%d", idx);
 		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
-		rc = sqlite3_step(stmt);
-		if (SQLITE_DONE != rc)
+		if (SQLITE_OK == rc)
 		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_ROW == rc)
+			{
+				U8* hexSK = (U8*)sqlite3_column_text(stmt, 0);
+				U8* hexPK = (U8*)sqlite3_column_text(stmt, 1);
+#if 0
+				U8* img = (U8*)sqlite3_column_blob(stmt, 2);
+				int bytes = sqlite3_column_bytes(stmt, 2);
+#endif 
+				size_t skLen = strlen((const char*)hexSK);
+				size_t pkLen = strlen((const char*)hexPK);
+				if (skLen == 64 && pkLen == 66)
+				{
+					if (wt_IsHexString(hexSK, skLen) && wt_IsPublicKey(hexPK, pkLen))
+					{
+						U8 sk[32];
+						U8 skEncrypted[32];
+						U8 pk0[33];
+						U8 pk1[33];
 
+						AES256_ctx ctxAES = { 0 };
+
+						wt_HexString2Raw(hexSK, 64, skEncrypted, nullptr);
+						wt_HexString2Raw(hexPK, 66, pk0, nullptr);
+
+						wt_AES256_init(&ctxAES, hash);
+						wt_AES256_decrypt(&ctxAES, 2, sk, skEncrypted);
+
+						if (WT_OK == GenPublicKeyFromSecretKey(sk, pk1))
+						{
+							if(0 == memcmp(pk0, pk1, 33))
+								ret = WT_OK;
+						}
+					}
+				}
+			}
 		}
-		rc = sqlite3_finalize(stmt);
 
+		rc = sqlite3_finalize(stmt);
 		sqlite3_close(db);
 	}
 
-	return 0;
+	return ret;
 }
-

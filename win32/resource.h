@@ -6,6 +6,9 @@
 #define IDC_STATIC              -1
 #endif
 
+#define IDI_ICON16              142
+#define IDI_ICON18              143
+
 #define IDD_REGISTER			150	
 #define IDD_LOGIN				151	
 #define IDB_REGISTER			152
@@ -21,3 +24,5 @@
 #define IDC_STATIC_NAME			170
 #define IDC_STATIC_PWD0			171
 #define IDC_STATIC_PWD1			172
+#define IDC_STATIC_NNAME		173
+#define IDC_STATIC_NPWD			174

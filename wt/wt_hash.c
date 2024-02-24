@@ -825,7 +825,8 @@ HTAB* hash_create(const char* tabname, long nelem, const HASHCTL* info, int flag
 			ALLOCSET_DEFAULT_SIZES);
 	}
 #endif
-	cxt = AllocSetContextCreateInternal2(NULL, "dynahash", ALLOCSET_DEFAULT_SIZES);
+	//cxt = AllocSetContextCreateInternal2(NULL, "dynahash", ALLOCSET_DEFAULT_SIZES);
+	cxt = wt_mempool_create("dynahash", ALLOCSET_DEFAULT_SIZES);
 
 	if (!cxt)
 		return NULL;

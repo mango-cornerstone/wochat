@@ -1,9 +1,9 @@
 /*
- *  common basic data types used in the whole project
+ *  common basic data types and constant symbols used in the whole project
  */
 
-#ifndef _WT_WOCHATYPES_H_
-#define _WT_WOCHATYPES_H_
+#ifndef __WT_WOCHATYPES_H__
+#define __WT_WOCHATYPES_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,8 +41,25 @@ typedef unsigned long long int uint64;
 typedef size_t Size;
 
 
+#define WT_OK					0x00000000		/* Successful result */
+#define WT_FAIL					0x00000001
+
+#define WT_SOURCEEXHAUSTED		0x00000002
+#define WT_TARGETEXHAUSTED		0x00000003
+#define WT_SOURCEILLEGAL		0x00000004
+#define WT_SK_GENERATE_ERR		0x00000005
+#define WT_PK_GENERATE_ERR		0x00000006
+#define WT_UTF16ToUTF8_ERR		0x00000007
+#define WT_MEMORY_ALLOC_ERR		0x00000008
+#define WT_SQLITE_OPEN_ERR      0x00000009
+#define WT_SQLITE_PREPARE_ERR   0x0000000A
+#define WT_SQLITE_STEP_ERR      0x0000000B
+#define WT_SQLITE_FINALIZE_ERR  0x0000000C
+
+
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _WT_WOCHATYPES_H_ */
+#endif /* __WT_WOCHATYPES_H__ */

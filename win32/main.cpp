@@ -53,8 +53,10 @@ LONG				g_Quit = 0;
 LONG                g_NetworkStatus = 0;
 DWORD               g_dwMainThreadID  = 0;
 
+U8*					g_myImage = nullptr;
 U32  				g_messageSequence = 0;
 HTAB*				g_messageHTAB = nullptr;
+HTAB*               g_keyHTAB = nullptr;
 MemoryPoolContext   g_messageMemPool = nullptr;
 
 // private key and public key
@@ -87,6 +89,7 @@ HCURSOR				g_hCursorNS = nullptr;
 HCURSOR				g_hCursorHand = nullptr;
 HCURSOR				g_hCursorIBeam = nullptr;
 wchar_t				g_AppPath[MAX_PATH + 1] = {0};
+wchar_t				g_DBPath[MAX_PATH + 1] = { 0 };
 
 CAtlWinModule _Module;
 
@@ -1559,14 +1562,15 @@ static int GetApplicationPath(HINSTANCE hInstance)
 		g_AppPath[i] = L'\0';
 	}
 	else
-	{
 		g_AppPath[0] = L'\0';
-	}
 
-	if (i == 0)
-		iRet = 30;
+	if (i == 0 || i > (MAX_PATH - 10))
+		return 30;
 
-	OpenWoChatDatabase(g_AppPath);
+	swprintf((wchar_t*)g_DBPath, MAX_PATH, L"%s\\wt.db", g_AppPath);
+
+	if (WT_OK != CheckWoChatDatabase(g_DBPath))
+		iRet = 31;
 
 	return iRet;
 }
@@ -1616,8 +1620,9 @@ static int MemoryContextInit()
 		if (!g_messageMemPool)
 			r = 1;
 	}
+
 	{
-		HASHCTL hctl;
+		HASHCTL hctl = { 0 };
 		hctl.keysize = 32; // the SHA256 is 32 bytes
 		hctl.entrysize = hctl.keysize + sizeof(void*);
 		g_messageHTAB = hash_create("MainMessageHTAB", 256, &hctl, HASH_ELEM | HASH_BLOBS);
@@ -1625,6 +1630,57 @@ static int MemoryContextInit()
 			r = 1;
 	}
 
+#if 0
+	{
+		HASHCTL hctl = { 0 };
+		hctl.keysize = 33; // the SHA256 is 32 bytes
+		hctl.entrysize = hctl.keysize + sizeof(void*);
+		g_messageHTAB = hash_create("MainMessageHTAB", 256, &hctl, HASH_ELEM | HASH_BLOBS);
+		if (!g_messageHTAB)
+			r = 1;
+	}
+
+	{
+		U8 utf8[] = { 0xE7,0x8B,0xA1,0xE5,0x85,0x94,0xE4,0xB8,0x89,0xE7,0xAA,0x9F };
+		U32 len;
+		U32 rc = wt_UTF8ToUTF16(utf8, 12, nullptr, &len);
+		if (len > 0)
+		{
+			U16* output = (U16*)wt_palloc(g_messageMemPool, (len + 1)*sizeof(U16));
+			if (output)
+			{
+				len = 0;
+				rc = wt_UTF8ToUTF16(utf8, 12, output, &len);
+				output[len] = 0;
+				wchar_t* p = (wchar_t*)output;
+				wt_pfree(output);
+			}
+		}
+		rc++;
+	}
+	{
+		U16 utf16[] = { 0x72e1,0x5154,0x4e09,0x7a9f };
+		U32 len;
+		U32 rc = wt_UTF16ToUTF8(utf16, 4, nullptr, &len);
+		if (len > 0)
+		{
+			U8 utf8[12] = { 0 };
+			rc = wt_UTF16ToUTF8(utf16, 4, utf8, nullptr);
+			rc++;
+#if 0
+			U8* output = (U8*)wt_palloc(g_messageMemPool, len + 1);
+			if (output)
+			{
+
+				len = 0;
+				rc = wt_UTF8ToUTF16(utf8, 12, output, &len);
+				output[len] = 0;
+				wchar_t* p = (wchar_t*)output;
+				wt_pfree(output);
+#endif
+		}
+	}
+#endif
 	return r;
 }
 
@@ -1643,6 +1699,8 @@ static int InitInstance(HINSTANCE hInstance)
 	int iRet = 0;
 	DWORD length = 0;
 	HRESULT hr = S_OK;
+
+	g_myImage = (U8*)xbmpMe;
 
 	INITCOMMONCONTROLSEX iccex;
 	iccex.dwSize = sizeof(INITCOMMONCONTROLSEX);

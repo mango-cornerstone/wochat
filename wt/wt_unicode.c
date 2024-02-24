@@ -8,7 +8,8 @@
 #define UTF8_ACCEPT 0
 #define UTF8_REJECT 12
 
-static const U8 utf8d[] = {
+static const U8 utf8d[] = 
+{
 	// The first part of the table maps bytes to character classes that
 	// to reduce the size of the transition table and create bitmasks.
 	 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -29,7 +30,7 @@ static const U8 utf8d[] = {
 	12,36,12,12,12,12,12,12,12,12,12,12
 };
 
-static inline U32 decode_utf8(U32* state, U32* codep, U8 byte)
+static inline U32 decode_utf8(U32* state, U32* codep, U32 byte)
 {
 	U32 type = utf8d[byte];
 
@@ -40,51 +41,18 @@ static inline U32 decode_utf8(U32* state, U32* codep, U8 byte)
 	return *state;
 }
 
-/* utf8 must contain legal UTF8 character. Return the words(16-bit) of UTF16 */
-U32 UTF8toUTF16(U8* utf8, U32 utf8Bytes, U16* utf16)
-{
-	U32 i, words;
-	U32 state, codepoint;
-	U16* p;
-
-	if (NULL == utf16) return 0;
-
-	p = utf16;
-	words = 0;
-	state = UTF8_ACCEPT;
-
-	for (i = 0; i < utf8Bytes; i++)
-	{
-		if (UTF8_ACCEPT == decode_utf8(&state, &codepoint, utf8[i]))
-		{
-			if (codepoint <= 0xFFFF)
-			{
-				*p++ = (U16)codepoint;
-				words++;
-			}
-			else
-			{
-				*p++ = (U16)(0xD7C0 + (codepoint >> 10));
-				*p++ = (U16)(0xDC00 + (codepoint & 0x3FF));
-				words += 2;
-			}
-		}
-	}
-	return words;
-}
-
+#if 0
 /*
  * giving a string, scan from the beginning, and stop until the character that is not UTF8 character.
  * surrogate is used to conver UTF8 to UTF16
  */
-U32 verify_utf8_string(U8* buffer, U32 bytes, U32* characters, U32* surrogate)
+U32 wt_VerifyUTF8String(U8* input, U32 bytes, U32* characters, U32* surrogate)
 {
-	U8* p;
 	U8 charlen, k;
 	U32 i, char_num, sgt_num;
 
+	U8* p = input;
 	i = 0; char_num = sgt_num = 0;
-	p = buffer;
 	while (i < bytes) /* get all UTF-8 characters until we meed a none-UTF8 chararcter */
 	{
 		if (0 == (0x80 & *p))           charlen = 1;  /* 1-byte character */
@@ -108,8 +76,13 @@ verification_end:
 	if (NULL != surrogate)  *surrogate = sgt_num;
 	return i;
 }
+#endif 
 
+/*
+ * https://android.googlesource.com/platform/external/id3lib/+/master/unicode.org/ConvertUTF.h
+ */
 
+#if 0
 /*
  * Utility routine to tell whether a sequence of bytes is legal UTF-8.
  * This must be called with the length pre-determined by the first byte.
@@ -146,14 +119,22 @@ inline bool isLegalUTF8(const UTF8* source, int length)
 	if (*source > 0xF4) return false;
 	return true;
 }
+#endif 
+
+/* Some fundamental constants */
+#define UNI_REPLACEMENT_CHAR		(U32)0x0000FFFD
+#define UNI_MAX_BMP					(U32)0x0000FFFF
+#define UNI_MAX_UTF16				(U32)0x0010FFFF
+#define UNI_MAX_UTF32				(U32)0x7FFFFFFF
+#define UNI_MAX_LEGAL_UTF32			(U32)0x0010FFFF
 
 static const int halfShift = 10; /* used for shifting by 10 bits */
-static const UTF32 halfBase = 0x0010000UL;
-static const UTF32 halfMask = 0x3FFUL;
-#define UNI_SUR_HIGH_START  (UTF32)0xD800
-#define UNI_SUR_HIGH_END    (UTF32)0xDBFF
-#define UNI_SUR_LOW_START   (UTF32)0xDC00
-#define UNI_SUR_LOW_END     (UTF32)0xDFFF
+static const U32 halfBase = 0x0010000UL;
+static const U32 halfMask = 0x3FFUL;
+#define UNI_SUR_HIGH_START  (U32)0xD800
+#define UNI_SUR_HIGH_END    (U32)0xDBFF
+#define UNI_SUR_LOW_START   (U32)0xDC00
+#define UNI_SUR_LOW_END     (U32)0xDFFF
 
 /*
  * Once the bits are split out into bytes of UTF-8, this is a mask OR-ed
@@ -162,8 +143,9 @@ static const UTF32 halfMask = 0x3FFUL;
  * (I.e., one byte sequence, two byte... etc.). Remember that sequencs
  * for *legal* UTF-8 will be 4 or fewer bytes total.
  */
-static const UTF8 firstByteMark[7] = { 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC };
+static const U8 firstByteMark[7] = { 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC };
 
+#if 0
 ConversionResult ConvertUTF16toUTF8(const UTF16** sourceStart, const UTF16* sourceEnd, UTF8** targetStart, UTF8* targetEnd, ConversionFlags flags)
 {
 	ConversionResult result = conversionOK;
@@ -266,4 +248,194 @@ ConversionResult ConvertUTF16toUTF8(const UTF16** sourceStart, const UTF16* sour
 	*sourceStart = source;
 	*targetStart = target;
 	return result;
+}
+#endif
+
+U32	wt_UTF8ToUTF16(U8* input, U32 input_len, U16* output, U32* output_len)
+{
+	U32 codepoint;
+	U32 ret = WT_OK;
+	U32 state = UTF8_ACCEPT;
+	U32 status = UTF8_ACCEPT;
+	U32 words = 0;
+
+	if (!output) // the caller only wants to determine how many words in UTF8 string
+	{
+		for (U32 i = 0; i < input_len; i++)
+		{
+			status = decode_utf8(&state, &codepoint, input[i]);
+			if (UTF8_ACCEPT == status)
+			{
+				if (codepoint <= 0xFFFF)
+					words++;
+				else
+					words += 2;
+			}
+		}
+		if (UTF8_ACCEPT != status)
+			ret = WT_FAIL;
+	}
+	else
+	{
+		U16* p = output;
+		for (U32 i = 0; i < input_len; i++)
+		{
+			status = decode_utf8(&state, &codepoint, input[i]);
+			if (UTF8_ACCEPT == status)
+			{
+				if (codepoint <= 0xFFFF)
+				{
+					*p++ = (U16)codepoint;
+					words++;
+				}
+				else
+				{
+					*p++ = (U16)(0xD7C0 + (codepoint >> 10));
+					*p++ = (U16)(0xDC00 + (codepoint & 0x3FF));
+					words += 2;
+				}
+			}
+		}
+		if (UTF8_ACCEPT != status)
+			ret = WT_FAIL;
+	}
+
+	if (output_len)  
+		*output_len = words;
+
+	return ret;
+}
+
+U32	wt_UTF16ToUTF8(U16* input, U32 input_len, U8* output, U32* output_len)
+{
+	U32 codepoint, i;
+	U32 ret = WT_OK;
+	U32 bytesTotal = 0;
+	U8  BytesPerCharacter = 0;
+	U16 leadSurrogate, tailSurrogate;
+	const U32 byteMark = 0x80;
+	const U32 byteMask = 0xBF;
+
+	if (!output)  // the caller only wants to determine how many words in UTF16 string
+	{
+		for (i = 0; i < input_len; i++)
+		{
+			codepoint = input[i];
+			/* If we have a surrogate pair, convert to UTF32 first. */
+			if (codepoint >= UNI_SUR_HIGH_START && codepoint <= UNI_SUR_HIGH_END)
+			{
+				if (i < input_len - 1)
+				{
+					if (input[i + 1] >= UNI_SUR_LOW_START && input[i + 1] <= UNI_SUR_LOW_END)
+					{
+						leadSurrogate = input[i];
+						tailSurrogate = input[i + 1];
+						codepoint = ((leadSurrogate - UNI_SUR_HIGH_START) << halfShift) + (tailSurrogate - UNI_SUR_LOW_START) + halfBase;
+						i += 1;
+					}
+					else /* it's an unpaired lead surrogate */
+					{
+						ret = WT_FAIL;
+						break;
+					}
+				}
+				else /* We don't have the 16 bits following the lead surrogate. */
+				{
+					ret = WT_FAIL;
+					break;
+				}
+			}
+			// TPN: substitute all control characters except for NULL, TAB, LF or CR
+			if (codepoint && (codepoint != (U32)0x09) && (codepoint != (U32)0x0a) && (codepoint != (U32)0x0d) && (codepoint < (U32)0x20))
+				codepoint = 0x3f;
+			// TPN: filter out byte order marks and invalid character 0xFFFF
+			if ((codepoint == (U32)0xFEFF) || (codepoint == (U32)0xFFFE) || (codepoint == (U32)0xFFFF))
+				continue;
+
+			/* Figure out how many bytes the result will require */
+			if (codepoint < (U32)0x80)
+				BytesPerCharacter = 1;
+			else if (codepoint < (U32)0x800)
+				BytesPerCharacter = 2;
+			else if (codepoint < (U32)0x10000)
+				BytesPerCharacter = 3;
+			else if (codepoint < (U32)0x110000)
+				BytesPerCharacter = 4;
+			else
+			{
+				BytesPerCharacter = 3;
+				codepoint = UNI_REPLACEMENT_CHAR;
+			}
+			bytesTotal += BytesPerCharacter;
+		}
+	}
+	else
+	{
+		U8* p = output;
+		for (i = 0; i < input_len; i++)
+		{
+			codepoint = input[i];
+			/* If we have a surrogate pair, convert to UTF32 first. */
+			if (codepoint >= UNI_SUR_HIGH_START && codepoint <= UNI_SUR_HIGH_END)
+			{
+				if (i < input_len - 1)
+				{
+					if (input[i + 1] >= UNI_SUR_LOW_START && input[i + 1] <= UNI_SUR_LOW_END)
+					{
+						leadSurrogate = input[i];
+						tailSurrogate = input[i + 1];
+						codepoint = ((leadSurrogate - UNI_SUR_HIGH_START) << halfShift) + (tailSurrogate - UNI_SUR_LOW_START) + halfBase;
+						i += 1;
+					}
+					else /* it's an unpaired lead surrogate */
+					{
+						ret = WT_FAIL;
+						break;
+					}
+				}
+				else /* We don't have the 16 bits following the lead surrogate. */
+				{
+					ret = WT_FAIL;
+					break;
+				}
+			}
+			// TPN: substitute all control characters except for NULL, TAB, LF or CR
+			if (codepoint && (codepoint != (U32)0x09) && (codepoint != (U32)0x0a) && (codepoint != (U32)0x0d) && (codepoint < (U32)0x20))
+				codepoint = 0x3f;
+			// TPN: filter out byte order marks and invalid character 0xFFFF
+			if ((codepoint == (U32)0xFEFF) || (codepoint == (U32)0xFFFE) || (codepoint == (U32)0xFFFF))
+				continue;
+
+			/* Figure out how many bytes the result will require */
+			if (codepoint < (U32)0x80)
+				BytesPerCharacter = 1;
+			else if (codepoint < (U32)0x800)
+				BytesPerCharacter = 2;
+			else if (codepoint < (U32)0x10000)
+				BytesPerCharacter = 3;
+			else if (codepoint < (U32)0x110000)
+				BytesPerCharacter = 4;
+			else
+			{
+				BytesPerCharacter = 3;
+				codepoint = UNI_REPLACEMENT_CHAR;
+			}
+
+			p += BytesPerCharacter;
+			switch (BytesPerCharacter) /* note: everything falls through. */
+			{
+			case 4: *--p = (U8)((codepoint | byteMark) & byteMask); codepoint >>= 6;
+			case 3: *--p = (U8)((codepoint | byteMark) & byteMask); codepoint >>= 6;
+			case 2: *--p = (U8)((codepoint | byteMark) & byteMask); codepoint >>= 6;
+			case 1: *--p = (U8)(codepoint | firstByteMark[BytesPerCharacter]);
+			}
+			p += BytesPerCharacter;
+			bytesTotal += BytesPerCharacter;
+		}
+	}
+
+	if (WT_OK == ret && output_len)
+		*output_len = bytesTotal;
+
+	return ret;
 }

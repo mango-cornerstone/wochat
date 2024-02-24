@@ -166,15 +166,15 @@ bool wt_IsPublicKey(U8* str, const U8 len)
 	return bRet;
 }
 
-int wt_FillRandomData(U8* buf, U8 len)
+U32 wt_FillRandomData(U8* buf, U8 len)
 {
-	int r = 1;
+	U32 r = WT_FAIL;
 
 	if (buf && len)
 	{
 		NTSTATUS status = BCryptGenRandom(NULL, buf, len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
 		if (STATUS_SUCCESS == status)
-			r = 0;
+			r = WT_OK;
 	}
 	return r;
 }
@@ -221,24 +221,25 @@ U32 wt_GenRandomU32(U32 upper)
 	return r;
 }
 
-int wt_GenerateSecretKey(U8* sk)
+U32 wt_GenerateNewSecretKey(U8* sk)
 {
-	int r = 1;
+	U32 ret = WT_FAIL;
 	if (sk)
 	{
-		U8 i, k;
-		U8* p;
-		U8* q;
 		NTSTATUS status;
-		U8 random_data[32] = { 0 };
+		U8 random_data[256] = { 0 };
 
 		for (U8 k=0; k<255; k++)
 		{
-			status = BCryptGenRandom(NULL, random_data, 32, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+			status = BCryptGenRandom(NULL, random_data, 256, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
 			if (STATUS_SUCCESS == status)
 			{
-				p = random_data;
-				q = random_data + 16;
+				U8 i;
+				U8 secretKey[32] = { 0 };
+ 				wt_sha256_hash(random_data, 256, secretKey);
+
+				U8* p = secretKey;
+				U8* q = secretKey + 16;
 				// compare the first 16 bytes with the last 16 bytes to be sure they are not the same. This is rare
 				for (i = 0; i < 16; i++) 
 				{
@@ -247,24 +248,15 @@ int wt_GenerateSecretKey(U8* sk)
 				}
 				if (i < 16)
 				{
-					wt_sha256_hash(random_data, 32, sk);
-					p = sk;
-					q = sk + 16;
-					for (i = 0; i < 16; i++)
-					{
-						if (*p++ != *q++)
-							break;
-					}
-					if (i < 16)
-					{
-						r = 0;
-						break;
-					}
+					for (U8 j = 0; j < 32; j++) sk[j] = secretKey[j];
+					ret = WT_OK;
+					break;
 				}
 			}
 		}
 	}
-	return r;
+
+	return ret;
 }
 
 

@@ -9,6 +9,7 @@
 #include "wt_utils.h"
 #include "wt_sha256.h"
 #include "wt_aes256.h"
+#include "wt_unicode.h"
 
 #include "secp256k1.h"
 #include "sqlite/sqlite3.h"
@@ -18,12 +19,15 @@ extern LONG  g_Quit;
 extern LONG  g_NetworkStatus;
 extern DWORD g_dwMainThreadID;
 
+extern U8*               g_myImage;
 extern U32	             g_messageSequence;
 extern HTAB*             g_messageHTAB;
+extern HTAB*             g_keyHTAB;
 extern MemoryPoolContext g_messageMemPool;
 
 extern HINSTANCE g_hInstance;
 extern wchar_t   g_AppPath[MAX_PATH + 1];
+extern wchar_t   g_DBPath[MAX_PATH + 1];
 
 extern HWND		 g_hWndShareScreen;
 extern HWND		 g_hWndChatHistory;
@@ -152,16 +156,20 @@ typedef struct XChatGroup
 	MemoryPoolContext mempool;
 } XChatGroup;
 
-int OpenWoChatDatabase(LPCWSTR lpszPath);
+#define SQL_STMT_MAX_LEN		512
+
+U32 CheckWoChatDatabase(LPCWSTR lpszPath);
 
 int PushTaskIntoSendMessageQueue(MessageTask* message_task);
-int GenPublicKeyFromSecretKey(U8* sk, U8* pk);
+U32 GenPublicKeyFromSecretKey(U8* sk, U8* pk);
 int GetReceiverPublicKey(void* parent, U8* pk);
 
 // send a confirmation to the sender
 int SendConfirmationMessage(U8* pk, U8* hash);
 int DoWoChatLoginOrRegistration(HINSTANCE hInstance);
-int CreateNewScretKey(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen);
+U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen);
+U32 OpenAccount(U32 idx, U16* pwd, U32 len);
+
 int GetSecretKey(U8* sk, U8* pk);
 
 U16 GetSecretKeyNumber();

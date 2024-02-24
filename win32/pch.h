@@ -19,6 +19,8 @@
 #include <commdlg.h>
 #include <commctrl.h>
 #include <stringapiset.h>
+#include <uxtheme.h>
+#include <vssym32.h> //<tmschema.h>
 
 #include <atlbase.h>
 #include <atlwin.h>
@@ -28,6 +30,8 @@
 #pragma comment(lib, "dwrite.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "Uxtheme.lib")
+#pragma comment(lib, "Delayimp.lib")
 
 #include <mutex>
 #include <cmath>
