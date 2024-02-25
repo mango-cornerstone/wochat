@@ -872,3 +872,41 @@ BOOL DrawBitmapButton(DRAWITEMSTRUCT* dis)
 
 	return TRUE;
 }
+
+
+static const wchar_t txtSearchAdd[] = { 0x6dfb, 0x52a0, 0x597d, 0x53cb, 0 };
+static const wchar_t txtSearch[] = { 0x641c, 0 };
+static const wchar_t txtAdd[] = { 0x6dfb, 0x52a0, 0 };
+static const wchar_t txtCancel[] = { 0x53d6, 0x6d88, 0 };
+
+INT_PTR CALLBACK SearchDialogProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	HWND hWndCtl;
+	switch (uMsg)
+	{
+	case WM_INITDIALOG:
+		SetWindowTextW(hWnd, (LPCWSTR)txtSearchAdd);
+		hWndCtl = GetDlgItem(hWnd, IDC_BTN_SEARCH);
+		if (hWndCtl)
+			SetWindowTextW(hWndCtl, (LPCWSTR)txtSearch);
+		hWndCtl = GetDlgItem(hWnd, IDOK);
+		if (hWndCtl)
+			SetWindowTextW(hWndCtl, (LPCWSTR)txtAdd);
+		hWndCtl = GetDlgItem(hWnd, IDCANCEL);
+		if (hWndCtl)
+			SetWindowTextW(hWndCtl, (LPCWSTR)txtCancel);
+		hWndCtl = GetDlgItem(hWnd, IDC_PROGRESS_SEARCH);
+		if (hWndCtl)
+			ShowWindow(hWndCtl, SW_HIDE);
+		return TRUE;
+
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hWnd, LOWORD(wParam));
+			return TRUE;
+		}
+		break;
+	}
+	return FALSE;
+}

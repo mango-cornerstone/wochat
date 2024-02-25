@@ -130,6 +130,135 @@ static int GetKeyFromSecretKeyAndPlubicKey(U8* sk, U8* pk, U8* key)
 	return ret;
 }
 
+static U32 InsertIntoGoodMsgTable(U8* txt, U32 len, U8* hash)
+{
+	U32 ret = WT_FAIL;
+	int rc;
+	sqlite3* db;
+	sqlite3_stmt* stmt = NULL;
+	U8 sql[128];
+
+	U8 hexHash[65];
+	wt_Raw2HexString(hash, 32, hexHash, nullptr);
+
+	rc = sqlite3_open16(g_DBPath, &db);
+	if (SQLITE_OK != rc)
+	{
+		sqlite3_close(db);
+		return WT_SQLITE_OPEN_ERR;
+	}
+
+	sprintf_s((char*)sql, 128, "SELECT count(1) FROM r WHERE h='%s'", hexHash);
+	rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+	if (SQLITE_OK == rc)
+	{
+		rc = sqlite3_step(stmt);
+		if (rc == SQLITE_ROW)
+		{
+			int count = sqlite3_column_int(stmt, 0);
+			if (count > 0)
+			{
+				ret = WT_OK;
+				goto Exit_InsertIntoGoodMsgTable;
+			}
+		}
+	}
+
+	rc = sqlite3_prepare_v2(db, (const char*)"INSERT INTO r(h,t) VALUES((?),(?))", -1, &stmt, NULL);
+	if (SQLITE_OK == rc)
+	{
+		rc = sqlite3_bind_text(stmt, 1, (const char*)hexHash, 64, SQLITE_TRANSIENT);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_bind_text(stmt, 2, (const char*)txt, (int)len, SQLITE_TRANSIENT);
+			if (SQLITE_OK == rc)
+			{
+				rc = sqlite3_step(stmt);
+				if (SQLITE_DONE == rc)
+					ret = WT_OK;
+			}
+		}
+	}
+
+Exit_InsertIntoGoodMsgTable:
+	sqlite3_finalize(stmt);
+	sqlite3_close(db);
+	return ret;
+}
+
+static U32 InsertIntoAbadonMsgTable(U8* txt, U32 len)
+{
+	U32 ret = WT_FAIL;
+	int rc;
+	sqlite3* db;
+	sqlite3_stmt* stmt = NULL;
+
+	rc = sqlite3_open16(g_DBPath, &db);
+	if (SQLITE_OK != rc)
+	{
+		sqlite3_close(db);
+		return WT_SQLITE_OPEN_ERR;
+	}
+
+	rc = sqlite3_prepare_v2(db, (const char*)"INSERT INTO q(t) VALUES((?))", -1, &stmt, NULL);
+
+	if (SQLITE_OK == rc)
+	{
+		rc = sqlite3_bind_text(stmt, 1, (const char*)txt, (int)len, SQLITE_TRANSIENT);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_DONE == rc)
+				ret = WT_OK;
+		}
+	}
+	sqlite3_finalize(stmt);
+	sqlite3_close(db);
+	return ret;
+}
+
+static U32 InsertIntoSendMsgTable(U8* txt, U32 len, U8* hash, bool successful = true)
+{
+	U32 ret = WT_FAIL;
+	int rc;
+	sqlite3* db;
+	sqlite3_stmt* stmt = NULL;
+	U8 hexHash[65];
+
+	wt_Raw2HexString(hash, 32, hexHash, nullptr);
+
+	rc = sqlite3_open16(g_DBPath, &db);
+	if (SQLITE_OK != rc)
+	{
+		sqlite3_close(db);
+		return WT_SQLITE_OPEN_ERR;
+	}
+
+	if(successful)
+		rc = sqlite3_prepare_v2(db, (const char*)"INSERT INTO s(st,h,t) VALUES('Y',(?),(?))", -1, &stmt, NULL);
+	else
+		rc = sqlite3_prepare_v2(db, (const char*)"INSERT INTO s(st,h,t) VALUES('N',(?),(?))", -1, &stmt, NULL);
+
+	if (SQLITE_OK == rc)
+	{
+		rc = sqlite3_bind_text(stmt, 1, (const char*)hexHash, 64, SQLITE_TRANSIENT);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_bind_text(stmt, 2, (const char*)txt, (int)len, SQLITE_TRANSIENT);
+			if (SQLITE_OK == rc)
+			{
+				rc = sqlite3_step(stmt);
+				if (SQLITE_DONE == rc)
+					ret = WT_OK;
+			}
+		}
+	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_close(db);
+	return ret;
+}
+
 static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, PublishTask* task)
 {
 	assert(task);
@@ -248,6 +377,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 				rc = wt_b64_encode((const char*)message_raw, length_raw, (char*)(p + 89), length_b64);
 				if (rc == length_b64)
 				{
+					bool Successful = false;
 					msssage_b64[length_b64 + 89] = '\0'; // make the last byte to be zero
 					
 					// the receiver's public key is also the topic of MQTT 
@@ -256,8 +386,10 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 					// send out the message by using MQTT protocol
 					if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 89 + 1, msssage_b64, 1, false, NULL))
 					{
+						Successful = true;
 						InterlockedIncrement(&(node->state)); // we have processed this task
 					}
+					InsertIntoSendMsgTable(msssage_b64, length_b64 + 89, hash,Successful); // log the message into SQLite database
 				}
 				wt_pfree(msssage_b64);
 			}
@@ -538,10 +670,12 @@ extern "C"
 		// do some pre-check at first 
 		if (length_b64 < 134) // this is the minimal size for the packet
 			return;
-		if (msssage_b64[length_b64 - 1]) // the last byte is alway 0. 
-			return; 
+
 		if (msssage_b64[88] != '|' && msssage_b64[88] != '#') // the 88th bytes is spearated character
 			return;
+
+		if (0 == msssage_b64[length_b64 - 1]) // the last byte maybe zero 
+			length_b64--;
 
 		rc = wt_b64_decode((const char*)msssage_b64, 44, (char*)pkSender, 33);
 		if (rc != 33)
@@ -562,7 +696,7 @@ extern "C"
 			U32 length_raw;
 
 			q = msssage_b64;
-			length_raw = wt_b64_dec_len(length_b64 - 89 - 1);
+			length_raw = wt_b64_dec_len(length_b64 - 89);
 			message_raw = (U8*)wt_palloc(pool, length_raw);
 			if (message_raw)
 			{
@@ -578,10 +712,11 @@ extern "C"
 				AES256_ctx ctxAES1 = { 0 };
 
 				U8* p = message_raw;
-				rc = wt_b64_decode((const char*)(q + 89), length_b64 - 89 - 1, (char*)p, length_raw);
+				rc = wt_b64_decode((const char*)(q + 89), length_b64 - 89, (char*)p, length_raw);
 				if (rc < 0)
 				{
 					wt_pfree(message_raw);
+					InsertIntoAbadonMsgTable(msssage_b64, length_b64);
 					return;
 				}
 
@@ -622,6 +757,8 @@ extern "C"
 
 				if (0 == memcmp(hash, hash_org, 32)) // check the hash value is the same
 				{
+					InsertIntoGoodMsgTable(msssage_b64, length_b64, hash);
+
 					MessageTask* task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
 					if (task)
 					{
@@ -640,8 +777,13 @@ extern "C"
 							wt_pfree(task);
 					}
 				}
+				else
+					InsertIntoAbadonMsgTable(msssage_b64, length_b64);
+
 				wt_pfree(message_raw);
 			}
+			else
+				InsertIntoAbadonMsgTable(msssage_b64, length_b64);
 		}
 
 		if (msssage_b64[88] == '#') // this is a common message packet
@@ -953,6 +1095,40 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 		rc = sqlite3_prepare_v2(db,
 			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT, p INTEGER, a CHAR(1), dt INTEGER, sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm VARCHAR(128) NOT NULL UNIQUE, i32 BLOB, i128 BLOB)",
 			-1, &stmt, NULL);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_DONE == rc)
+				ret = WT_OK;
+		}
+		rc = sqlite3_prepare_v2(db,	
+			(const char*)"CREATE TABLE s(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,st CHAR(1),h CHAR(64) NOT NULL UNIQUE,t TEXT)", 
+			-1, &stmt, NULL);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_DONE == rc)
+				ret = WT_OK;
+		}
+		rc = sqlite3_prepare_v2(db, 
+			(const char*)"CREATE TABLE r(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,h CHAR(64) NOT NULL UNIQUE,t TEXT)", 
+			-1, &stmt, NULL);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_DONE == rc)
+				ret = WT_OK;
+		}
+		rc = sqlite3_prepare_v2(db, 
+			(const char*)"CREATE TABLE f(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,a CHAR(1),pk CHAR(66),nm VARCHAR(128),b INTEGER,x CHAR(1),i32 BLOB, i128 BLOB)", 
+			-1, &stmt, NULL);
+		if (SQLITE_OK == rc)
+		{
+			rc = sqlite3_step(stmt);
+			if (SQLITE_DONE == rc)
+				ret = WT_OK;
+		}
+		rc = sqlite3_prepare_v2(db, (const char*)"CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,t TEXT)", -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
 			rc = sqlite3_step(stmt);
@@ -1276,6 +1452,10 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 
 								memcpy(g_SK, sk, 32);
 								memcpy(g_PK, pk0, 33);
+
+								wt_sha256_hash(g_SK, 32, hash);
+								wt_Raw2HexString(hash, 11, g_MQTTPubClientId, nullptr); // The MQTT client Id is 23 bytes long
+								wt_Raw2HexString(hash + 16, 11, g_MQTTSubClientId, nullptr); // The MQTT client Id is 23 bytes long
 
 								size_t utf8len = strlen((const char*)utf8Name);
 								U32 status = wt_UTF8ToUTF16(utf8Name, (U32)utf8len, nullptr, &utf16len);

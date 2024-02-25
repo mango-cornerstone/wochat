@@ -2,6 +2,14 @@
 #define __DUI_WINDOW3_H__
 
 #include "dui/dui_win.h"
+
+enum Win3Mode
+{
+	WIN3_MODE_SHOWGROUP = 0,
+	WIN3_MODE_SHOWFRIEND,
+	WIN3_MODE_SHOWSETTING
+};
+
 class XWindow3 : public XWindowT <XWindow3>
 {
 	enum
@@ -11,6 +19,8 @@ class XWindow3 : public XWindowT <XWindow3>
 		GAP_LEFT3 = 6,
 		GAP_RIGHT3 = 10
 	};
+private:
+	Win3Mode m_mode = WIN3_MODE_SHOWGROUP;
 
 public:
 	XWindow3()
@@ -22,6 +32,51 @@ public:
 	~XWindow3() {}
 
 public:
+	Win3Mode GetMode() { return m_mode; }
+
+	void SetMode(Win3Mode mode)
+	{
+		XControl* xctl;
+		m_mode = mode;
+		switch (m_mode)
+		{
+		case WIN3_MODE_SHOWGROUP:
+			m_backgroundColor = 0xFFF5F5F5;
+
+			xctl = m_controlArray[XWIN3_BUTTON_DOT];
+			assert(nullptr != xctl);
+			xctl->HideMe(false);
+
+			xctl = m_controlArray[XWIN3_LABEL_PUBLICKEY];
+			assert(nullptr != xctl);
+			xctl->HideMe(false);
+
+			xctl = m_controlArray[XWIN3_LABEL_NAME];
+			assert(nullptr != xctl);
+			xctl->HideMe(false);
+			InvalidateScreen();
+			break;
+		case WIN3_MODE_SHOWFRIEND:
+		case WIN3_MODE_SHOWSETTING:
+			m_backgroundColor = 0xFFFFFFFF;
+			xctl = m_controlArray[XWIN3_BUTTON_DOT];
+			assert(nullptr != xctl);
+			xctl->HideMe();
+
+			xctl = m_controlArray[XWIN3_LABEL_PUBLICKEY];
+			assert(nullptr != xctl);
+			xctl->HideMe();
+
+			xctl = m_controlArray[XWIN3_LABEL_NAME];
+			assert(nullptr != xctl);
+			xctl->HideMe();
+			InvalidateScreen();
+			break;
+		default:
+			break;
+		}
+	}
+
 	void UpdateControlPosition()
 	{
 		XControl* xctl;
@@ -29,33 +84,36 @@ public:
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 
-		xctl = m_controlArray[XWIN3_BUTTON_DOT];
-		assert(nullptr != xctl);
-		sw = xctl->getWidth();
-		sh = xctl->getHeight();
-
-		if (w > (sw + GAP_RIGHT3) && h > (sh + GAP_BOTTOM3))
+		if (w > 0 && h > 0)
 		{
-			dx = w - sw - GAP_RIGHT3;
-			dy = h - sh - GAP_BOTTOM3;
+			xctl = m_controlArray[XWIN3_BUTTON_DOT];
+			assert(nullptr != xctl);
+			sw = xctl->getWidth();
+			sh = xctl->getHeight();
+
+			if (w > (sw + GAP_RIGHT3) && h > (sh + GAP_BOTTOM3))
+			{
+				dx = w - sw - GAP_RIGHT3;
+				dy = h - sh - GAP_BOTTOM3;
+				xctl->setPosition(dx, dy);
+			}
+
+			xctl = m_controlArray[XWIN3_LABEL_PUBLICKEY];
+			assert(nullptr != xctl);
+			sh = xctl->getHeight();
+			assert(h > sh);
+			dx = GAP_LEFT3;
+			dy = (h - sh) - 3;
+			xctl->setPosition(dx, dy);
+
+			xctl = m_controlArray[XWIN3_LABEL_NAME];
+			assert(nullptr != xctl);
+			sh = xctl->getHeight();
+			assert(dy > sh);
+			dx = GAP_LEFT3;
+			dy = dy - sh - 3;
 			xctl->setPosition(dx, dy);
 		}
-
-		xctl = m_controlArray[XWIN3_LABEL_TITLE];
-		assert(nullptr != xctl);
-		sh = xctl->getHeight();
-		assert(h > sh);
-		dx = GAP_LEFT3;
-		dy = (h - sh) - 3;
-		xctl->setPosition(dx, dy);
-
-		xctl = m_controlArray[XWIN3_LABEL_NAME];
-		assert(nullptr != xctl);
-		sh = xctl->getHeight();
-		assert(dy > sh);
-		dx = GAP_LEFT3;
-		dy = dy - sh - 3;
-		xctl->setPosition(dx, dy);
 	}
 
 private:
@@ -78,6 +136,7 @@ public:
 		int lineheight;
 		U8 id, * mem;
 		U32 objSize;
+		wchar_t name[] = { 0x0041,0x0049,0 };
 
 		assert(nullptr != m_pool);
 
@@ -105,41 +164,52 @@ public:
 		}
 		else return;
 
-		id = XWIN3_LABEL_TITLE;
+		id = XWIN3_LABEL_PUBLICKEY;
 		objSize = sizeof(XLabel);
 		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
-			wchar_t title[67];
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_TITLE);
 			lb->Init(id, "W3TITLE", g_pDWriteFactory, pTextFormat);
-			wt_Raw2HexStringW(g_PKTo, 33, title, nullptr);
-			lb->setText((wchar_t*)title, 66);
+			lb->setText((wchar_t*)name, 2);
 			m_controlArray[id] = lb;
 		}
 
 		id = XWIN3_LABEL_NAME;
-		//objSize = sizeof(XLabel);
 		mem = (U8*)wt_palloc(m_pool, objSize);
 		if (NULL != mem)
 		{
-#if _DEBUG
-			wchar_t name[] = { 0x57ce,0x5357,0x5c0f,0x675c};
-#else
-			wchar_t name[] = { 0x6625,0x7533,0x95e8,0x4e0b,0x5ba2 };
-#endif
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
 			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(id, "W3NAME", g_pDWriteFactory, pTextFormat);
-			lb->setText((wchar_t*)name, sizeof(name)/sizeof(name[0]));
+			lb->setText((wchar_t*)name, 2);
 			m_controlArray[id] = lb;
 		}
 
 		m_maxControl = 3;
+	}
+
+	U32 SetChatGroup(XChatGroup* cg)
+	{
+		XLabel* lb;
+		wchar_t hexPK[67];
+
+		assert(cg);
+
+		lb = (XLabel*)m_controlArray[XWIN3_LABEL_NAME];
+		lb->setText(cg->name, cg->nameLen);
+
+		wt_Raw2HexStringW(cg->pubkey, 33, hexPK, nullptr);
+		lb = (XLabel*)m_controlArray[XWIN3_LABEL_PUBLICKEY];
+		lb->setText(hexPK, 66);
+		UpdateControlPosition();
+		InvalidateScreen();
+
+		return WT_OK;
 	}
 };
 

@@ -282,6 +282,7 @@ public:
         m_status &= ~DUI_STATUS_NEEDRAW;
     }
 
+#if 0
     void PostWindowHide() {}
     void WindowHide()
     {
@@ -302,7 +303,7 @@ public:
         m_status |= DUI_STATUS_NEEDRAW;  // need to redraw this virtual window
         InvalidateDUIWindow();           // set the gloabl redraw flag so next paint routine will do the paint work
     }
-
+#endif
     bool PostWindowMessage(U32 message, U64 wParam = 0, U64 lParam = 0)
     {
         bool bRet = false;
@@ -479,7 +480,7 @@ public:
         return 0;
     }
 
-    int UpdateSize(XRECT* r, U32* screenbuf)
+    int UpdateSize(XRECT* r, U32* screenbuf = nullptr)
     {
         m_screen = screenbuf;
 
@@ -487,22 +488,25 @@ public:
         {
             m_area.left = m_area.top = m_area.right = m_area.bottom = 0;
             m_size = 0;
-            return 0;
+            m_status &= ~DUI_STATUS_VISIBLE;
         }
-        assert(r);
-        m_area.left   = r->left;
-        m_area.top    = r->top;
-        m_area.right  = r->right;
-        m_area.bottom = r->bottom;
-        m_size = (U32)((r->right - r->left) * (r->bottom - r->top));
-
-        if (nullptr != r && nullptr != m_screen)
+        else
         {
             XControl* xctl;
+            assert(r);
+            m_area.left = r->left;
+            m_area.top = r->top;
+            m_area.right = r->right;
+            m_area.bottom = r->bottom;
+            m_size = (U32)((r->right - r->left) * (r->bottom - r->top));
+
             int w = r->right - r->left;
             int h = r->bottom - r->top;
             assert(w >= 0);
             assert(h >= 0);
+
+            m_status |= DUI_STATUS_VISIBLE;
+
             for (int i = 0; i < m_maxControl; i++)
             {
                 xctl = m_controlArray[i];

@@ -230,7 +230,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER0);
 			assert(pTextFormat);
 
 			lb->Init(id, "W1NAME", g_pDWriteFactory, pTextFormat);
@@ -246,7 +246,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER2);
 			assert(pTextFormat);
 			lb->Init(id, "W1PK", g_pDWriteFactory, pTextFormat);
 			lb->setText((wchar_t*)txtWin1PK, wcslen(txtWin1PK));
@@ -261,7 +261,7 @@ public:
 			wchar_t hexPK[67] = { 0 };
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(id, "W1PKValue", g_pDWriteFactory, pTextFormat);
 
@@ -278,7 +278,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER2);
 			assert(pTextFormat);
 			lb->Init(id, "W1DT", g_pDWriteFactory, pTextFormat);
 			lb->setText((wchar_t*)txtWin1DT, wcslen(txtWin1DT));
@@ -293,7 +293,7 @@ public:
 			wchar_t* dt = L"2024/02/27 18:56:32";
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(id, "W1DTValue", g_pDWriteFactory, pTextFormat);
 			lb->setText(dt, wcslen(dt));
@@ -307,7 +307,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER2);
 			assert(pTextFormat);
 			lb->Init(id, "W1PKValue", g_pDWriteFactory, pTextFormat);
 			lb->setText((wchar_t*)txtWin1TBD, wcslen(txtWin1TBD));

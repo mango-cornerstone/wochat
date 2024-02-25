@@ -38,6 +38,9 @@
 #include "winchathist.h"
 #include "winaudiocall.h"
 
+static const U8* default_pkAI = (const U8*)"03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA";
+
+#if 0
 #if _DEBUG
 static const U8* default_private_key = (const U8*)"E3589E51A04EAB9343E2AD073890A1A2C1B172167D486C38045D88C6FD20CBBC";
 static const U8* default_public_key  = (const U8*)"02E3687B2D10B91B81730AA49DAB8BA42BCD25770D2B1C604897DDF2211ACBFE81";
@@ -45,6 +48,8 @@ static const U8* default_public_key  = (const U8*)"02E3687B2D10B91B81730AA49DAB8
 static const U8* default_private_key = (const U8*)"59AEA450B4C91512A5CD0465C50786911ED0BC671AF820EDFA163CF7CEA5345C";
 static const U8* default_public_key  = (const U8*)"0288D216B2CEB02171FF4FD3392C2A1AC388F41FBD8392A719F690829F23BCA8E5";
 #endif
+#endif 
+
 ////////////////////////////////////////////////////////////////
 // global variables
 ////////////////////////////////////////////////////////////////
@@ -67,7 +72,7 @@ U8*                 g_myImage128 = nullptr;
 U8*                 g_SK = nullptr;
 U8*                 g_PK = nullptr;
 
-U8*                 g_PKTo = nullptr;
+U8*                 g_pkAI = nullptr;
 U8*                 g_MQTTPubClientId = nullptr;
 U8*                 g_MQTTSubClientId = nullptr;
 HINSTANCE			g_hInstance = nullptr;
@@ -85,7 +90,7 @@ MQTTSubData			g_SubData = { 0 };
 
 ID2D1Factory*		g_pD2DFactory = nullptr;
 IDWriteFactory*		g_pDWriteFactory = nullptr;
-IDWriteTextFormat*  g_pTextFormat[8] = { 0 };
+IDWriteTextFormat*  g_pTextFormat[WT_TEXTFORMAT_TOTAL] = { 0 };
 
 D2D1_DRAW_TEXT_OPTIONS d2dDrawTextOptions = D2D1_DRAW_TEXT_OPTIONS_NONE;
 
@@ -106,7 +111,7 @@ static HMODULE hDLLDWrite{};
 
 IDWriteTextFormat* GetTextFormat(U8 idx)
 {
-	if (idx < 8)
+	if (idx < WT_TEXTFORMAT_TOTAL)
 		return g_pTextFormat[idx];
 
 	return nullptr;
@@ -122,6 +127,7 @@ DWORD WINAPI LoadingDataThread(LPVOID lpData);
 DWORD WINAPI MQTTSubThread(LPVOID lpData);
 DWORD WINAPI MQTTPubThread(LPVOID lpData);
 
+INT_PTR CALLBACK SearchDialogProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 #if 0
 LRESULT CALLBACK WndProcEmoji(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -350,7 +356,7 @@ public:
 		cg = m_win2.GetSelectedChatGroup();
 		if (cg)
 		{
-			//m_win3.UpdateTitle(cg->name);
+			m_win3.SetChatGroup(cg);
 			m_win4.SetChatGroup(cg);
 		}
 
@@ -394,8 +400,8 @@ public:
 	{
 		LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
 
-		lpMMI->ptMinTrackSize.x = 1024;
-		lpMMI->ptMinTrackSize.y = 768;
+		lpMMI->ptMinTrackSize.x = 800;
+		lpMMI->ptMinTrackSize.y = 600;
 
 		return 0;
 	}
@@ -671,21 +677,20 @@ public:
 	// window 0 is fixed
 	void AdjustDUIWindowPosition()
 	{
-		if (nullptr != m_screenBuff)
-		{
-			U32  size;
-			XRECT area;
-			XRECT* r = &area;
-			U32* dst = m_screenBuff;
+		U32  size;
+		XRECT area;
+		XRECT* r = &area;
+		U32* dst = m_screenBuff;
 
-			// windows 0
-			r->left = m_rectClient.left;
-			r->right = XWIN0_WIDTH;
-			r->top = m_rectClient.top;
-			r->bottom = m_rectClient.bottom;
-			m_win0.UpdateSize(r, dst);
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			dst += size;
+		assert(m_screenBuff);
+		XRECT* xr = m_win0.GetWindowArea(); // windows 0 is always in fixed size
+		r->left = xr->left; r->top = xr->top; r->right = xr->right; r->bottom = xr->bottom;
+		size = (U32)((r->right - r->left) * (r->bottom - r->top));
+		dst += size;
+
+		switch (m_mode)
+		{
+		case AppMode::ModeTalk:
 			// windows 1
 			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
@@ -710,6 +715,64 @@ public:
 			r->top = m_splitterHPos + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
 			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			m_win5.UpdateSize(r, dst);
+			break;
+		case AppMode::ModeFriend:
+			// windows 1
+			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win1.UpdateSize(r, dst);
+			dst += size;
+			// windows 2
+			r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win2.UpdateSize(r, dst);
+			// windows 3
+			dst += size;
+			r->left = m_splitterVPos + SPLITLINE_WIDTH; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
+			m_win3.UpdateSize(r, dst);
+			m_win4.UpdateSize(nullptr);
+			m_win5.UpdateSize(nullptr);
+			break;
+		case AppMode::ModeSetting:
+			// windows 1
+			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win1.UpdateSize(r, dst);
+			dst += size;
+			// windows 2
+			r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			m_win2.UpdateSize(r, dst);
+			// windows 3
+			dst += size;
+			r->left = m_splitterVPos + SPLITLINE_WIDTH; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
+			m_win3.UpdateSize(r, dst);
+			m_win4.UpdateSize(nullptr);
+			m_win5.UpdateSize(nullptr);
+			break;
+		case AppMode::ModeQuan:
+		case AppMode::ModeCoin:
+		case AppMode::ModeFavorite:
+		case AppMode::ModeFile:
+			r->left = r->right; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
+			m_win1.UpdateSize(r, dst);
+			m_win2.UpdateSize(nullptr);
+			m_win3.UpdateSize(nullptr);
+			m_win4.UpdateSize(nullptr);
+			m_win5.UpdateSize(nullptr);
+			break;
+		case AppMode::ModeMe:
+			// windows 1
+			r->left = r->right; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
+			m_win1.UpdateSize(r, dst);
+			m_win2.UpdateSize(nullptr);
+			m_win3.UpdateSize(nullptr);
+			m_win4.UpdateSize(nullptr);
+			m_win5.UpdateSize(nullptr);
+			break;
+		default:
+			ATLASSERT(0);
+			break;
 		}
 	}
 
@@ -814,33 +877,25 @@ public:
 			{
 			case XWIN0_BUTTON_ME:
 				m_mode = AppMode::ModeMe;
-				m_splitterHPosfix0 = 0;
-				m_splitterHPosfix1 = 0;
-				m_splitterVPos = 0;
-				m_splitterHPos = 0;
 				DoMeModeLayOut();
 				break;
 			case XWIN0_BUTTON_TALK:
 				m_mode = AppMode::ModeTalk;
-				m_splitterHPosfix0 = XWIN1_HEIGHT;
-				m_splitterHPosfix1 = XWIN3_HEIGHT;
-				m_splitterVPos = m_splitterVPosOld;
-				m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
 				DoTalkModeLayOut();
 				break;
 			case XWIN0_BUTTON_FRIEND:
 				m_mode = AppMode::ModeFriend;
+				DoFriendModeLayOut();
+				break;
+			case XWIN0_BUTTON_SETTING:
+				m_mode = AppMode::ModeSetting;
+				DoSettingModeLayOut();
 				break;
 			case XWIN0_BUTTON_QUAN:
 			case XWIN0_BUTTON_COIN:
 			case XWIN0_BUTTON_FAVORITE:
 			case XWIN0_BUTTON_FILE:
-			case XWIN0_BUTTON_SETTING:
 				m_mode = AppMode::ModeCoin;
-				m_splitterHPosfix0 = 0;
-				m_splitterHPosfix1 = 0;
-				m_splitterVPos = 0;
-				m_splitterHPos = 0;
 				DoTBDModeLayOut();
 				break;
 			default:
@@ -881,6 +936,11 @@ public:
 						rc++;
 					}
 				}
+				break;
+			case XWIN1_BUTTON_SEARCH:
+			{
+				INT_PTR result = DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_SEARCHADD), m_hWnd, SearchDialogProc);
+			}
 				break;
 			default:
 				break;
@@ -1018,76 +1078,89 @@ public:
 
 	U32	DoMeModeLayOut()
 	{
-		XRECT area;
-		XRECT* r;
-		XRECT* xr = m_win0.GetWindowArea();
-		area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
-		r = &area;
+		ATLASSERT(AppMode::ModeMe == m_mode);
 
-		U32* dst = m_screenBuff;
-		U32 size = (U32)((r->right - r->left) * (r->bottom - r->top));
-		dst += size;
+		m_splitterHPosfix0 = 0;
+		m_splitterHPosfix1 = 0;
+		m_splitterVPos = 0;
+		m_splitterHPos = 0;
 
-		// windows 1
-		r->left = r->right;
-		r->right = m_rectClient.right;
-		r->top = m_rectClient.top;
-		r->bottom = m_rectClient.bottom;
-		size = (U32)((r->right - r->left) * (r->bottom - r->top));
-		m_win1.UpdateSize(r, dst);
 		m_win1.SetMode(WIN1_MODE_SHOWME);
-		m_win2.WindowHide();
-		m_win3.WindowHide();
-		m_win4.WindowHide();
-		m_win5.WindowHide();
+		AdjustDUIWindowPosition();
 
 		return WT_OK;
 	}
 
 	U32	DoTalkModeLayOut()
 	{
-		m_win1.WindowShow();
-		m_win2.WindowShow();
-		m_win3.WindowShow();
-		m_win4.WindowShow();
-		m_win5.WindowShow();
+		ATLASSERT(AppMode::ModeTalk == m_mode);
+
+		m_splitterHPosfix0 = XWIN1_HEIGHT;
+		m_splitterHPosfix1 = XWIN3_HEIGHT;
+		m_splitterVPos = m_splitterVPosOld;
+		m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
+		ATLASSERT(m_splitterVPos > 0);
+		ATLASSERT(m_splitterHPos > 0);
+
+		m_win1.SetMode(WIN1_MODE_SHOWSEARCH);
+		m_win2.SetMode(WIN2_MODE_SHOWTALK);
+		m_win3.SetMode(WIN3_MODE_SHOWGROUP);
 		AdjustDUIWindowPosition();
+
 		return WT_OK;
 	}
 
 	U32	DoFriendModeLayOut()
 	{
+		ATLASSERT(AppMode::ModeFriend == m_mode);
+
+		m_splitterHPosfix0 = XWIN1_HEIGHT;
+		m_splitterHPosfix1 = 0;
+		m_splitterVPos = m_splitterVPosOld;
+		m_splitterHPos = 0;
+		ATLASSERT(m_splitterVPos > 0);
+
+		m_win1.SetMode(WIN1_MODE_SHOWSEARCH);
+		m_win2.SetMode(WIN2_MODE_SHOWFRIEND);
+		m_win3.SetMode(WIN3_MODE_SHOWFRIEND);
+
+		AdjustDUIWindowPosition();
+
 		return WT_OK;
 	}
 
 	U32	DoTBDModeLayOut()
 	{
-		XRECT area;
-		XRECT* r;
-		XRECT* xr = m_win0.GetWindowArea();
-		area.left = xr->left;  area.top = xr->top; area.right = xr->right; area.bottom = xr->bottom;
-		r = &area;
+		ATLASSERT(AppMode::ModeQuan == m_mode || AppMode::ModeCoin == m_mode || AppMode::ModeFavorite == m_mode || AppMode::ModeFile == m_mode);
 
-		U32* dst = m_screenBuff;
-		U32 size = (U32)((r->right - r->left) * (r->bottom - r->top));
-		dst += size;
+		m_splitterHPosfix0 = 0;
+		m_splitterHPosfix1 = 0;
+		m_splitterVPos = 0;
+		m_splitterHPos = 0;
 
-		// windows 1
-		r->left = r->right;
-		r->right = m_rectClient.right;
-		r->top = m_rectClient.top;
-		r->bottom = m_rectClient.bottom;
-		size = (U32)((r->right - r->left) * (r->bottom - r->top));
-		m_win1.UpdateSize(r, dst);
 		m_win1.SetMode(WIN1_MODE_SHOWTBD);
-		m_win2.WindowHide();
-		m_win3.WindowHide();
-		m_win4.WindowHide();
-		m_win5.WindowHide();
+		AdjustDUIWindowPosition();
 
 		return WT_OK;
 	}
 
+	U32	DoSettingModeLayOut()
+	{
+		ATLASSERT(AppMode::ModeSetting == m_mode);
+
+		m_splitterHPosfix0 = XWIN1_HEIGHT;
+		m_splitterHPosfix1 = 0;
+		m_splitterVPos = m_splitterVPosOld;
+		m_splitterHPos = 0;
+		ATLASSERT(m_splitterVPos > 0);
+
+		m_win1.SetMode(WIN1_MODE_SHOWSEARCH);
+		m_win2.SetMode(WIN2_MODE_SHOWSETTING);
+		m_win3.SetMode(WIN3_MODE_SHOWSETTING);
+		AdjustDUIWindowPosition();
+
+		return WT_OK;
+	}
 
 	LRESULT OnSize(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
@@ -1154,39 +1227,38 @@ public:
 				}
 				m_splitterHPosOld = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPos;
 			}
+			
+			{ // set  windows 0 buffer
+				U32  size;
+				XRECT area;
+				XRECT* r = &area;
+				U32* dst = m_screenBuff;
+				
+				r->left = m_rectClient.left;
+				r->right = XWIN0_WIDTH;
+				r->top = m_rectClient.top;
+				r->bottom = m_rectClient.bottom;
+				m_win0.UpdateSize(r, dst);
+			}
 
 			switch (m_mode)
 			{
 			case AppMode::ModeTalk:
-				m_splitterHPosfix0 = XWIN1_HEIGHT;
-				m_splitterHPosfix1 = XWIN3_HEIGHT;
-				m_splitterVPos = m_splitterVPosOld;
-				m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
-				ATLASSERT(m_splitterVPos > 0);
-				ATLASSERT(m_splitterHPos > 0);
 				DoTalkModeLayOut();
 				break;
 			case AppMode::ModeFriend:
-				m_splitterHPosfix0 = XWIN1_HEIGHT;
-				m_splitterHPosfix1 = XWIN3_HEIGHT;
-				m_splitterVPos = m_splitterVPosOld;
-				m_splitterHPos = (m_rectClient.bottom - m_rectClient.top) - m_splitterHPosOld;
-				ATLASSERT(m_splitterVPos > 0);
-				ATLASSERT(m_splitterHPos > 0);
-				DoTalkModeLayOut();
+				DoFriendModeLayOut();
 				break;
 			case AppMode::ModeQuan:
 			case AppMode::ModeCoin:
 			case AppMode::ModeFavorite:
 			case AppMode::ModeFile:
-			case AppMode::ModeSetting:
 				DoTBDModeLayOut();
 				break;
+			case AppMode::ModeSetting:
+				DoSettingModeLayOut();
+				break;
 			case AppMode::ModeMe:
-				m_splitterHPosfix0 = 0;
-				m_splitterHPosfix1 = 0;
-				m_splitterVPos = 0;
-				m_splitterHPos = 0;
 				DoMeModeLayOut();
 				break;
 			default:
@@ -1607,13 +1679,13 @@ public:
 					switch (msg.message)
 					{
 					case WM_WIN_SCREENTHREAD:
-						rc = CreateShareScreenThread(default_public_key);
+						rc = CreateShareScreenThread(default_pkAI);
 						break;
 					case WM_WIN_CHATHISTHREAD:
-						rc = CreateChatHistoryThread(default_public_key);
+						rc = CreateChatHistoryThread(default_pkAI);
 						break;
 					case WM_WIN_AUDIOTHREAD:
-						rc = CreateAudioCallThread(default_public_key);
+						rc = CreateAudioCallThread(default_pkAI);
 						break;
 					default:
 						break;
@@ -1706,7 +1778,7 @@ static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 	
 	ATLASSERT(g_pDWriteFactory);
 
-	for (U8 i = 0; i < 8; i++)
+	for (U8 i = 0; i < WT_TEXTFORMAT_TOTAL; i++)
 	{
 		ReleaseUnknown(g_pTextFormat[i]);
 	}
@@ -1762,14 +1834,65 @@ static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 		return (20 + idx);
 	}
 
-	idx = WT_TEXTFORMAT_OTHER;
+	idx = WT_TEXTFORMAT_OTHER0;
 	hr = g_pDWriteFactory->CreateTextFormat(
 		L"Microsoft Yahei",
 		NULL,
 		DWRITE_FONT_WEIGHT_NORMAL,
 		DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL,
-		24.f,
+		21.f,
+		L"en-US",
+		&(g_pTextFormat[idx])
+	);
+
+	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	{
+		return (20 + idx);
+	}
+
+	idx = WT_TEXTFORMAT_OTHER1;
+	hr = g_pDWriteFactory->CreateTextFormat(
+		L"Arial",
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		16.f,
+		L"en-US",
+		&(g_pTextFormat[idx])
+	);
+
+	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	{
+		return (20 + idx);
+	}
+
+	idx = WT_TEXTFORMAT_OTHER2;
+	hr = g_pDWriteFactory->CreateTextFormat(
+		L"Microsoft Yahei",
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		16.f,
+		L"en-US",
+		&(g_pTextFormat[idx])
+	);
+
+	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	{
+		return (20 + idx);
+	}
+
+	idx = WT_TEXTFORMAT_OTHER3;
+	hr = g_pDWriteFactory->CreateTextFormat(
+		L"Microsoft Yahei",
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		11.f,
 		L"en-US",
 		&(g_pTextFormat[idx])
 	);
@@ -1830,7 +1953,7 @@ static U32 MemoryContextInit()
 	ATLASSERT(g_topMemPool == nullptr);
 	ATLASSERT(g_SK == nullptr);
 	ATLASSERT(g_PK == nullptr);
-	ATLASSERT(g_PKTo == nullptr);
+	ATLASSERT(g_pkAI == nullptr);
 	ATLASSERT(g_MQTTPubClientId == nullptr);
 	ATLASSERT(g_MQTTSubClientId == nullptr);
 
@@ -1839,20 +1962,24 @@ static U32 MemoryContextInit()
 	{
 		g_SK   = (U8*)wt_palloc0(g_topMemPool, 32);
 		g_PK   = (U8*)wt_palloc0(g_topMemPool, 33);
-		g_PKTo = (U8*)wt_palloc0(g_topMemPool, 33);
+		g_pkAI = (U8*)wt_palloc0(g_topMemPool, 33);
 		g_MQTTPubClientId = (U8*)wt_palloc0(g_topMemPool, 23);
 		g_MQTTSubClientId = (U8*)wt_palloc0(g_topMemPool, 23);
 
-		if (g_SK && g_PK && g_PKTo && g_MQTTPubClientId && g_MQTTSubClientId)
+		if (g_SK && g_PK && g_pkAI && g_MQTTPubClientId && g_MQTTSubClientId)
 		{
+			wt_HexString2Raw((U8*)default_pkAI, 66, g_pkAI, nullptr);
+			ret = WT_OK;
+#if 0
 			U8 hash[32] = { 0 };
 			wt_HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
-			wt_HexString2Raw((U8*)default_public_key, 66, g_PKTo, nullptr);
+			wt_HexString2Raw((U8*)default_public_key, 66, g_pkAI, nullptr);
 			ret = GenPublicKeyFromSecretKey(g_SK, g_PK);
 
 			wt_sha256_hash(g_SK, 32, hash);
 			wt_Raw2HexString(hash, 11, g_MQTTPubClientId, nullptr); // The MQTT client Id is 23 bytes long
 			wt_Raw2HexString(hash+16, 11, g_MQTTSubClientId, nullptr); // The MQTT client Id is 23 bytes long
+#endif 
 		}
 	}
 

@@ -38,7 +38,7 @@ extern HWND		 g_hWndAudioCall;
 
 extern U8* g_SK;
 extern U8* g_PK;
-extern U8* g_PKTo;
+extern U8* g_pkAI;
 extern U8* g_MQTTPubClientId;
 extern U8* g_MQTTSubClientId;
 
@@ -57,7 +57,16 @@ extern IDWriteFactory* g_pDWriteFactory;
 #define WT_TEXTFORMAT_GROUPMESSAGE	4
 #define WT_TEXTFORMAT_INPUTMESSAGE	5
 #define WT_TEXTFORMAT_USERNAME		6
-#define WT_TEXTFORMAT_OTHER			7
+#define WT_TEXTFORMAT_OTHER0		7
+#define WT_TEXTFORMAT_OTHER1		8
+#define WT_TEXTFORMAT_OTHER2		9
+#define WT_TEXTFORMAT_OTHER3		10
+#define WT_TEXTFORMAT_OTHER4		11
+#define WT_TEXTFORMAT_OTHER5		12
+#define WT_TEXTFORMAT_OTHER6		13
+#define WT_TEXTFORMAT_OTHER7		14
+#define WT_TEXTFORMAT_OTHER8		15
+#define WT_TEXTFORMAT_TOTAL			16
 
 #define WM_MQTT_PUBMESSAGE		(WM_USER + 300)
 #define WM_MQTT_SUBMESSAGE		(WM_USER + 301)
@@ -147,13 +156,22 @@ typedef struct XChatGroup
 	U32  unread;		// how many unread messages? if more than 254, use ... 
 	U16  member;		// how many members in this group?
 	wchar_t* name;		// the group name
+	U16 nameLen;
 	U64  ts;			// the time stamp. 
 	wchar_t* tsText;	// the text of time stamp
 	wchar_t* lastmsg;	// the last message of this group
+	U16 lastmsgLen;
 	XChatMessage* headMessage;
 	XChatMessage* tailMessage;
 	MemoryPoolContext mempool;
 } XChatGroup;
+
+typedef struct XSetting
+{
+	XSetting* next;
+	wchar_t* name;		// the group name
+	U16 nameLen;
+} XSetting;
 
 #define SQL_STMT_MAX_LEN		512
 
