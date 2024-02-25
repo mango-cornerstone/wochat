@@ -32,7 +32,9 @@ private:
 	enum {
 		ITEM_HEIGHT = 64,
 		ICON_HEIGHT = 40,
-		ITEM_MARGIN = ((ITEM_HEIGHT - ICON_HEIGHT) >> 1)
+		ICON_HEIGHTF = 32,
+		ITEM_MARGIN = ((ITEM_HEIGHT - ICON_HEIGHT) >> 1),
+		ITEM_MARGINF = ((ITEM_HEIGHT - ICON_HEIGHTF) >> 1)
 	};
 
 	Win2Mode m_mode = WIN2_MODE_SHOWTALK;
@@ -44,11 +46,19 @@ private:
 	XChatGroup* m_chatgroupSelected = nullptr;
 	XChatGroup* m_chatgroupSelectPrev = nullptr;
 	XChatGroup* m_chatgroupHovered = nullptr;
+	int chatgroupTotal;
 
 	XSetting* m_settingRoot = nullptr;
 	XSetting* m_settingSelected = nullptr;
 	XSetting* m_settingSelectPrev = nullptr;
 	XSetting* m_settingHovered = nullptr;
+	int settingTotal;
+
+	XFriend* m_friendRoot = nullptr;
+	XFriend* m_friendSelected = nullptr;
+	XFriend* m_friendSelectPrev = nullptr;
+	XFriend* m_friendHovered = nullptr;
+	int friendTotal;
 
 	void InitBitmap()
 	{
@@ -58,7 +68,7 @@ public:
 	XWindow2()
 	{
 		m_backgroundColor = DEFAULT_COLOR;
-		m_property |= (DUI_PROP_HASVSCROLL | DUI_PROP_HANDLEWHEEL | DUI_PROP_HANDLETEXT);
+		m_property |= (DUI_PROP_HASVSCROLL | DUI_PROP_HANDLEWHEEL | DUI_PROP_LARGEMEMPOOL | DUI_PROP_HANDLETEXT);
 		m_message = WM_XWINDOWS02;
 	}
 	~XWindow2() {}
@@ -83,6 +93,86 @@ public:
 	XChatGroup* GetSelectedChatGroup()
 	{
 		return m_chatgroupSelected;
+	}
+
+	U32 LoadFriends()
+	{
+		assert(nullptr == m_friendRoot);
+		assert(nullptr != m_pool);
+
+		m_friendRoot = (XFriend*)wt_palloc0(m_pool, sizeof(XFriend));
+		if(m_friendRoot)
+		{
+			int rc;
+			sqlite3* db;
+			sqlite3_stmt* stmt = NULL;
+
+			rc = sqlite3_open16(g_DBPath, &db);
+			if (SQLITE_OK != rc)
+			{
+				sqlite3_close(db);
+				wt_pfree(m_friendRoot);
+				m_friendRoot = nullptr;
+				return WT_SQLITE_OPEN_ERR;
+			}
+
+			rc = sqlite3_prepare_v2(db, (const char*)"SELECT pk,nm,i32,i128 FROM f WHERE id=1", -1, &stmt, NULL);
+			if (SQLITE_OK == rc)
+			{
+				rc = sqlite3_step(stmt);
+				if (SQLITE_ROW == rc)
+				{
+					U8* hexPK = (U8*)sqlite3_column_text(stmt, 0);
+					U8* utf8Name = (U8*)sqlite3_column_text(stmt, 1);
+					U8* img32 = (U8*)sqlite3_column_blob(stmt, 2);
+					int bytes32 = sqlite3_column_bytes(stmt, 2);
+					U8* img128 = (U8*)sqlite3_column_blob(stmt, 3);
+					int bytes128 = sqlite3_column_bytes(stmt, 3);
+					size_t pkLen = strlen((const char*)hexPK);
+					if (pkLen == 66)
+					{
+						if (wt_IsPublicKey(hexPK, pkLen))
+						{
+							U32 utf16len;
+							size_t utf8len = strlen((const char*)utf8Name);
+
+							wt_HexString2Raw(hexPK, 66, m_friendRoot->pubkey, nullptr);
+
+							U32 status = wt_UTF8ToUTF16(utf8Name, (U32)utf8len, nullptr, &utf16len);
+							if (WT_OK == status)
+							{
+								m_friendRoot->name = (wchar_t*)wt_palloc(m_pool, (utf16len + 1) * sizeof(wchar_t));
+								assert(m_friendRoot->name);
+								m_friendRoot->nameLen = (U16)utf16len;
+								wt_UTF8ToUTF16(utf8Name, (U32)utf8len, (U16*)m_friendRoot->name, nullptr);
+								m_friendRoot->name[utf16len] = L'\0';
+
+								if (bytes32 == MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32))
+								{
+									m_friendRoot->iconSmall = (U32*)wt_palloc0(g_topMemPool, bytes32);
+									assert(m_friendRoot->iconSmall);
+									m_friendRoot->wSmall = MY_ICON_SIZE32;
+									m_friendRoot->hSmall = MY_ICON_SIZE32;
+								}
+
+								if (bytes128 == MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32))
+								{
+									m_friendRoot->iconLarge = (U32*)wt_palloc0(g_topMemPool, bytes128);
+									assert(m_friendRoot->iconLarge);
+									m_friendRoot->wLarge = MY_ICON_SIZE128;
+									m_friendRoot->hLarge = MY_ICON_SIZE128;
+								}
+							}
+						}
+					}
+				}
+			}
+			sqlite3_finalize(stmt);
+
+			sqlite3_close(db);
+		}
+
+		return WT_OK;
 	}
 
 	U32 InitSettings()
@@ -173,7 +263,7 @@ public:
 		ret = LoadChatGroupList();
 
 		InitSettings();
-
+		LoadFriends();
 		return ret;
 	}
 
@@ -304,6 +394,48 @@ public:
 
 	int DoFriendDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{
+		HRESULT hr;
+		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
+		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
+		ID2D1SolidColorBrush* pBkgBrush0 = static_cast<ID2D1SolidColorBrush*>(brushBkg0);
+		ID2D1SolidColorBrush* pBkgBrush1 = static_cast<ID2D1SolidColorBrush*>(brushBkg1);
+		IDWriteTextLayout* pTextLayout = nullptr;
+
+		assert(pTextFormat);
+
+		int dx, dy, pos;
+		int w = m_area.right - m_area.left;
+		int h = m_area.bottom - m_area.top;
+		int margin = (DUI_STATUS_VSCROLL & m_status) ? m_scrollWidth : 0;
+		int W = DUI_ALIGN_DEFAULT32(w - margin - 4);
+		int H = ITEM_HEIGHT;
+		D2D1_POINT_2F orgin;
+		dx = ITEM_MARGINF;
+
+		XFriend* p = m_friendRoot;
+		pos = 0;
+		while (nullptr != p)
+		{
+			if (pos + ITEM_HEIGHT > m_ptOffset.y)
+			{
+				dx = ITEM_MARGINF + ICON_HEIGHTF + ITEM_MARGINF;
+				dy = pos - m_ptOffset.y + ITEM_MARGINF;
+				hr = g_pDWriteFactory->CreateTextLayout(p->name, p->nameLen, pTextFormat, static_cast<FLOAT>(W), static_cast<FLOAT>(1), &pTextLayout);
+				if (S_OK == hr)
+				{
+					orgin.x = static_cast<FLOAT>(dx + m_area.left);
+					orgin.y = static_cast<FLOAT>(dy + m_area.top);
+					pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout, pTextBrush);
+				}
+				SafeRelease(&pTextLayout);
+			}
+			p = p->next;
+			pos += ITEM_HEIGHT;
+			if (pos >= (m_ptOffset.y + h))
+				break;
+		}
+
 		return 0;
 	}
 
@@ -372,7 +504,42 @@ public:
 	int FriendPaint(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
 	{
 		int r = 0;
+		U32 color;
+		int dx, dy, pos;
+		int w = m_area.right - m_area.left;
+		int h = m_area.bottom - m_area.top;
+		int margin = (DUI_STATUS_VSCROLL & m_status) ? m_scrollWidth : 0;
+		int W = DUI_ALIGN_DEFAULT32(w - ITEM_MARGINF - ITEM_MARGINF - ICON_HEIGHTF - margin - 4);
+		int H = ITEM_HEIGHT;
 
+		dx = ITEM_MARGINF;
+		XFriend* p = m_friendRoot;
+		pos = 0;
+		while (nullptr != p)
+		{
+			if (pos + ITEM_HEIGHT > m_ptOffset.y)
+			{
+				if (p == m_friendSelected)
+				{
+					color = SELECTED_COLOR;
+				}
+				else if (p == m_friendHovered)
+				{
+					color = HOVERED_COLOR;
+				}
+				else
+				{
+					color = DEFAULT_COLOR;
+				}
+				dy = pos - m_ptOffset.y;
+				DUI_ScreenFillRect(m_screen, w, h, color, w - margin, ITEM_HEIGHT, 0, dy);
+				DUI_ScreenDrawRectRound(m_screen, w, h, p->iconSmall, p->wSmall, p->hSmall, dx, dy + ITEM_MARGINF, color, color);
+			}
+			p = p->next;
+			pos += ITEM_HEIGHT;
+			if (pos >= (m_ptOffset.y + h))
+				break;
+		}
 		return r;
 	}
 

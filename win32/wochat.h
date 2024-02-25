@@ -22,6 +22,9 @@ extern DWORD g_dwMainThreadID;
 extern wchar_t*          g_myName;
 extern U8*               g_myImage32;
 extern U8*               g_myImage128;
+extern U8*				 g_aiImage32;
+extern U8*				 g_aiImage128;
+
 extern U32	             g_messageSequence;
 extern HTAB*             g_messageHTAB;
 extern HTAB*             g_keyHTAB;
@@ -172,6 +175,21 @@ typedef struct XSetting
 	wchar_t* name;		// the group name
 	U16 nameLen;
 } XSetting;
+
+typedef struct XFriend
+{
+	XFriend* next;
+	U8 pubkey[33];
+	wchar_t* name;		// the group name
+	U16 nameLen;
+	U32* iconSmall;
+	U8   wSmall;			    // the width in pixel of this icon
+	U8   hSmall;			    // the height in pixel of this icon
+	U32* iconLarge;
+	U8   wLarge;			    // the width in pixel of this icon
+	U8   hLarge;			    // the height in pixel of this icon
+} XFriend;
+
 
 #define SQL_STMT_MAX_LEN		512
 

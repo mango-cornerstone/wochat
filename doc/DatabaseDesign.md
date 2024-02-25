@@ -63,7 +63,7 @@ CREATE TABLE f
 	id INTEGER PRIMARY KEY AUTOINCREMENT, -- 序列号，从1开始，1,2,3,...
 	dt INTEGER,  -- 8字节的时间
 	a CHAR(1),   -- 该公钥钥是否已经被拉黑，处于非活跃状态： Y = active
-	pk CHAR(64), -- 该用户的公钥
+	pk CHAR(66), -- 该用户的公钥
 	nm VARCHAR(128),  -- UTF8编码的用户名称
 	b INTEGER, -- 生日
 	x CHAR(1), -- 性别

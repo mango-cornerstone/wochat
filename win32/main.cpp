@@ -67,6 +67,8 @@ MemoryPoolContext   g_topMemPool = nullptr;
 wchar_t*            g_myName = nullptr;
 U8*                 g_myImage32 = nullptr;
 U8*                 g_myImage128 = nullptr;
+U8*					g_aiImage32 = nullptr;
+U8*					g_aiImage128 = nullptr;
 
 // private key and public key
 U8*                 g_SK = nullptr;
@@ -2068,6 +2070,8 @@ static int InitInstance(HINSTANCE hInstance)
 
 	g_myImage32 = (U8*)xbmpIcon32;
 	g_myImage128 = (U8*)xbmpIcon128;
+	g_aiImage32 = (U8*)xbmpAI32;
+	g_aiImage128 = (U8*)xbmpAI128;
 
 	INITCOMMONCONTROLSEX iccex;
 	iccex.dwSize = sizeof(INITCOMMONCONTROLSEX);

@@ -1101,6 +1101,7 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			if (SQLITE_DONE == rc)
 				ret = WT_OK;
 		}
+		sqlite3_finalize(stmt);
 		rc = sqlite3_prepare_v2(db,	
 			(const char*)"CREATE TABLE s(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,st CHAR(1),h CHAR(64) NOT NULL UNIQUE,t TEXT)", 
 			-1, &stmt, NULL);
@@ -1110,7 +1111,8 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			if (SQLITE_DONE == rc)
 				ret = WT_OK;
 		}
-		rc = sqlite3_prepare_v2(db, 
+		sqlite3_finalize(stmt);
+		rc = sqlite3_prepare_v2(db,
 			(const char*)"CREATE TABLE r(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,h CHAR(64) NOT NULL UNIQUE,t TEXT)", 
 			-1, &stmt, NULL);
 		if (SQLITE_OK == rc)
@@ -1119,15 +1121,39 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			if (SQLITE_DONE == rc)
 				ret = WT_OK;
 		}
-		rc = sqlite3_prepare_v2(db, 
+		sqlite3_finalize(stmt);
+		rc = sqlite3_prepare_v2(db,
 			(const char*)"CREATE TABLE f(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,a CHAR(1),pk CHAR(66),nm VARCHAR(128),b INTEGER,x CHAR(1),i32 BLOB, i128 BLOB)", 
 			-1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
 			rc = sqlite3_step(stmt);
 			if (SQLITE_DONE == rc)
-				ret = WT_OK;
+			{
+				sqlite3_finalize(stmt);
+				rc = sqlite3_prepare_v2(db,
+					(const char*)"INSERT INTO f(a,pk,nm,b,x,i32,i128) VALUES('Y','03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA',(?),0,'X',(?),(?))",
+					-1, &stmt, NULL);
+				if (SQLITE_OK == rc)
+				{
+					U8 utf8[] = { 0x41,0x49,0xE8,0x81,0x8A,0xE5,0xA4,0xA9,0xE6,0x9C,0xBA,0xE5,0x99,0xA8,0xE4,0xBA,0xBA,0 };
+					rc = sqlite3_bind_text(stmt, 1, (const char*)utf8, 17, SQLITE_TRANSIENT);
+
+					assert(g_aiImage32);
+					assert(g_aiImage128);
+
+					rc = sqlite3_bind_blob(stmt, 2, g_aiImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
+					rc = sqlite3_bind_blob(stmt, 3, g_aiImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
+					rc = sqlite3_step(stmt);
+					if (SQLITE_DONE == rc)
+					{
+						ret = WT_OK;
+					}
+					sqlite3_finalize(stmt);
+				}
+			}
 		}
+
 		rc = sqlite3_prepare_v2(db, (const char*)"CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,t TEXT)", -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -1135,6 +1161,7 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			if (SQLITE_DONE == rc)
 				ret = WT_OK;
 		}
+		sqlite3_finalize(stmt);
 	}
 	else
 	{
@@ -1145,8 +1172,8 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			if (SQLITE_ROW == rc)
 				ret = WT_OK;
 		}
+		sqlite3_finalize(stmt);
 	}
-	sqlite3_finalize(stmt);
 	sqlite3_close(db);
 
 	return ret;
