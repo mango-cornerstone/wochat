@@ -19,6 +19,12 @@
 #define XWIN3_LABEL_DOB_VAL         8
 #define XWIN3_LABEL_SEX				9
 #define XWIN3_LABEL_SEX_VAL         10
+#define XWIN3_LABEL_AREA			11
+#define XWIN3_LABEL_AREA_VAL        12
+#define XWIN3_LABEL_SOURCE			13
+#define XWIN3_LABEL_SOURCE_VAL      14
+#define XWIN3_LABEL_MOTTO			15
+#define XWIN3_BUTTON_TALK			16
 
 #define XWIN0_BUTTON_ME             0
 #define XWIN0_BUTTON_TALK           1

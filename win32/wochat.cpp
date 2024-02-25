@@ -1123,7 +1123,7 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 		}
 		sqlite3_finalize(stmt);
 		rc = sqlite3_prepare_v2(db,
-			(const char*)"CREATE TABLE f(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,a CHAR(1),pk CHAR(66),nm VARCHAR(128),b INTEGER,x CHAR(1),i32 BLOB, i128 BLOB)", 
+			(const char*)"CREATE TABLE f(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,a CHAR(1),pk CHAR(66),nm VARCHAR(128),mt VARCHAR(128),f VARCHAR(128),s VARCHAR(128),b INTEGER,x CHAR(1),i32 BLOB, i128 BLOB)", 
 			-1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -1132,18 +1132,24 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			{
 				sqlite3_finalize(stmt);
 				rc = sqlite3_prepare_v2(db,
-					(const char*)"INSERT INTO f(a,pk,nm,b,x,i32,i128) VALUES('Y','03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA',(?),0,'X',(?),(?))",
+					(const char*)"INSERT INTO f(a,pk,nm,mt,f,s,b,x,i32,i128) VALUES('Y','03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA',(?),(?),(?),(?),0,'X',(?),(?))",
 					-1, &stmt, NULL);
 				if (SQLITE_OK == rc)
 				{
-					U8 utf8[] = { 0x41,0x49,0xE8,0x81,0x8A,0xE5,0xA4,0xA9,0xE6,0x9C,0xBA,0xE5,0x99,0xA8,0xE4,0xBA,0xBA,0 };
-					rc = sqlite3_bind_text(stmt, 1, (const char*)utf8, 17, SQLITE_TRANSIENT);
+					U8 utf8Name[] = { 0x41,0x49,0xE8,0x81,0x8A,0xE5,0xA4,0xA9,0xE6,0x9C,0xBA,0xE5,0x99,0xA8,0xE4,0xBA,0xBA,0 };
+					U8 utf8Motto[] = { 0xE4,0xB8,0x80,0xE5,0x88,0x87,0xE7,0x9A,0x86,0xE6,0x9C,0x89,0xE5,0x8F,0xAF,0xE8,0x83,0xBD,0 };
+					U8 utf8Area[] = { 0xE5,0xAE,0x87,0xE5,0xAE,0x99,0xE8,0xB5,0xB7,0xE7,0x82,0xB9,0 };
+					U8 utf8Source[] = { 0xE7,0xB3,0xBB,0xE7,0xBB,0x9F,0xE8,0x87,0xAA,0xE5,0xB8,0xA6,0 };
+
+					rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, 17, SQLITE_TRANSIENT);
+					rc = sqlite3_bind_text(stmt, 2, (const char*)utf8Motto, 18, SQLITE_TRANSIENT);
+					rc = sqlite3_bind_text(stmt, 3, (const char*)utf8Area, 12, SQLITE_TRANSIENT);
+					rc = sqlite3_bind_text(stmt, 4, (const char*)utf8Source, 12, SQLITE_TRANSIENT);
 
 					assert(g_aiImage32);
 					assert(g_aiImage128);
-
-					rc = sqlite3_bind_blob(stmt, 2, g_aiImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
-					rc = sqlite3_bind_blob(stmt, 3, g_aiImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
+					rc = sqlite3_bind_blob(stmt, 5, g_aiImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
+					rc = sqlite3_bind_blob(stmt, 6, g_aiImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
 					rc = sqlite3_step(stmt);
 					if (SQLITE_DONE == rc)
 					{
