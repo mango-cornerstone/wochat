@@ -263,7 +263,7 @@ typedef struct DUI_TEXT_RANGE
 class XControl
 {
 public:
-    U8   m_Id = 0;
+    U16   m_Id = 0;
 protected:
     U8   m_Name[16+1] = { 0 };
 
@@ -286,8 +286,10 @@ protected:
     U32  m_statusPrev = XCONTROL_STATE_NORMAL;
 
     U32* m_parentBuf = nullptr; // the draw screen buffer of the parent
-    int  m_parentW = 0; // the width of the draw screen of parent
-    int  m_parentH = 0; // the heigh of the draw screen of parent
+    int  m_parentL = 0; // the left position of the parent
+    int  m_parentT = 0; // the top position of the parent
+    int  m_parentR = 0; // the right position of the parent
+    int  m_parentB = 0; // the bottom position of the parent
 
     U32  m_Color0 = 0xFFFFFFFF;
     U32  m_Color1 = 0xFFFFFFFF;
@@ -460,11 +462,13 @@ public:
         return m_property;
     }
 
-    void AttachParent(U32* parentBuf, int parentW, int parentH)
+    void AttachParent(U32* parentBuf, int left, int top, int right, int bottom)
     {
         m_parentBuf = parentBuf;
-        m_parentW = parentW;
-        m_parentH = parentH;
+        m_parentL = left;
+        m_parentT = top;
+        m_parentR = right;
+        m_parentB = bottom;
     }
 
     bool IsVisible()
@@ -521,9 +525,10 @@ public:
         return m_status;
     }
 
-    int Init(U8 id, const char* name, void* ptr0 = nullptr, void* ptr1 = nullptr)
+    int Init(U16 id, const char* name, void* ptr0 = nullptr, void* ptr1 = nullptr)
     {
         size_t len = strlen(name);
+
         m_Id = id;
 
         if (len > 16)
@@ -564,12 +569,12 @@ public:
 
 class XButton : public XControl
 {
+public:
     // all XBitmpas should have extactly the same size
     XBitmap* imgNormal;
     XBitmap* imgHover;
     XBitmap* imgPress;
     XBitmap* imgActive;
-public:
     int Draw(int dx = 0, int dy = 0);
 
     int InitControl(void* ptr0 = nullptr, void* ptr1 = nullptr)

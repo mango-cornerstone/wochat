@@ -62,6 +62,7 @@ public:
 	int ReLayoutText(int width, int height)
 	{
 		int r = 0;
+#if 0
 		if (width && m_chatGroup)
 		{
 			m_sizeAll.cy = 0;
@@ -96,12 +97,14 @@ public:
 
 			r++;
 		}
+#endif
 		return r;
 	}
 
 	int SetChatGroup(XChatGroup* cg)
 	{
 		int r = 0;
+#if 0
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		assert(nullptr != cg);
@@ -126,12 +129,14 @@ public:
 			InvalidateDUIWindow();
 			r++;
 		}
+#endif 
 		return r;
 	}
 
 	int UpdateMessageConfirmation(U8* pk, U8* hash)
 	{
-		int i, r = 0;
+		int i = 0, r = 0;
+#if 0
 		XMessage* xm;
 
 		if (nullptr == m_chatGroup)
@@ -157,11 +162,13 @@ public:
 		}
 		if (r)
 			InvalidateScreen();
+#endif 
 		return r;
 	}
 
 	void UpdateControlPosition() // the user has changed the width of this window
 	{
+#if 0
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		if (0 == m_chatGroup->width)
@@ -174,10 +181,12 @@ public:
 			m_chatGroup->width = w;
 			ReLayoutText(w, h);
 		}
+#endif 
 	}
 
 	int Do_DUI_CREATE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
 	{ 
+#if 0
 		// determine the line height
 		IDWriteTextLayout* pTextLayout = nullptr;
 		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
@@ -201,12 +210,13 @@ public:
 			m_sizeLine.cy = 16;
 		}
 		SafeRelease(&pTextLayout);
-
+#endif 
 		return 0; 
 	}
 
 	int UpdateReceivedMessage(MessageTask* mt)
 	{
+#if 0
 		U32 i = 0;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
@@ -316,11 +326,13 @@ public:
 
 			InvalidateScreen();
 		}
+#endif 
 		return 1;
 	}
 
 	int UpdateMyMessage(MessageTask* mt)
 	{
+#if 0
 		int r;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
@@ -430,10 +442,13 @@ public:
 		}
 
 		return r;
+#endif
+		return 0;
 	}
 
 	int Do_DUI_PAINT(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
 	{
+#if 0
 		// U32 color = 0xFF6AEA9E;
 		int x, y, dx, dy, W, H;
 		int w = m_area.right - m_area.left;
@@ -463,11 +478,13 @@ public:
 				p = p->next;
 			}
 		}
+#endif 
 		return 0;
 	}
 
 	int DoDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{ 
+#if 0
 		HRESULT hr;
 		U32 color;
 		bool isMe;
@@ -550,11 +567,13 @@ public:
 				p = p->next;
 			}
 		}
+#endif 
 		return 0; 
 	}
 
 	int Do_DUI_MOUSEMOVE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
 	{ 
+#if 0
 		int i, idxHit, r = 0;
 		FLOAT xPos = static_cast<FLOAT>(GET_X_LPARAM(lParam));
 		FLOAT yPos = static_cast<FLOAT>(GET_Y_LPARAM(lParam));
@@ -584,6 +603,8 @@ public:
 		}
 
 		return r; 
+#endif 
+		return 0;
 	}
 };
 

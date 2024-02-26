@@ -31,7 +31,7 @@ Wochat的客户端采用sqlite数据库作为基本的数据存储技术。一�
 CREATE TABLE c
 (
 id INTEGER PRIMARY KEY,  -- 主键，每一个参数的定义，可以参考wochatypes.h这个文件中的WT_PARAM_xxxx的定义
-tp CHAR(1),  -- 该参数的类型，I表示整形，T表示UTF8编码的字符串，B表示二进制信息。 F表示浮点数。
+tp INTEGER NOT NULL,  -- 该参数的类型，0表示整形，1表示UTF8编码的字符串，2表示二进制信息。 3表示浮点数。
 i0 INTEGER,  -- 整型
 i1 INTEGER,  -- 整型
 tx TEXT,     -- 以UTF8编码的文本信息
@@ -39,7 +39,9 @@ bb BLOB      -- 二进制信息，存储图片等内容。
 );
 ```
 
-说明：如果该参数是浮点数类型，就用i0.i1的形式存储，i0是整数部分，i1是小数部分。浮点数的可能性很低。
+说明：
+- 如果tp=0,表示id表示的参数的值保存在i0这一列中。tp=1表示id表示的参数的值保存在tx这一列。tp=2表示id表示的参数的值保存在bb这一列中。
+- 如果tp=3，id表示的参数的值保存在i0和i1这两列中。其中，i0是整数部分，i1是小数部分。
 
 ### 私钥表k
 ```sql
@@ -47,11 +49,15 @@ CREATE TABLE k
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 序列号，从1开始，1,2,3,...
 	pt INTEGER,  -- 父节点，如果是0，表示原始私钥。如果是1，这表示这把私钥是1号私钥加密的
-	at CHAR(1),  -- 该私钥是否已经被禁止，处于非活跃状态： Y = active
+	at INTEGER,  -- 该私钥是否已经被禁止，处于非活跃状态： non-zero = active, 0 - disable
 	dt INTEGER,  -- 8字节的时间
 	sk CHAR(64) NOT NULL UNIQUE,     -- 被AES256加密过的密钥。 pt=0的私钥由口令加密，pt为非0的，有对应的私钥加密
 	pk CHAR(66) NOT NULL UNIQUE,     -- sk对应的公钥
 	nm TEXT NOT NULL UNIQUE, -- UTF8编码的用户名称
+	bt INTEGER,   -- 生日，0表示未知
+	sx INTEGER,   -- 性别， 男-0, 女-1，其它值表示为未知
+    mt TEXT,      -- 座右铭motto
+    fm TEXT,      -- 所在地区 from
 	b0 BLOB,  -- 32 X 32的小头像
 	b1 BLOB   -- 128 X 128的大头像
 );
@@ -68,11 +74,11 @@ CREATE TABLE p
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT, -- 序列号，从1开始，1,2,3,...
 	dt INTEGER,   -- 8字节的时间
-	at CHAR(1),   -- 该公钥钥是否已经被拉黑，处于非活跃状态： Y = active
+	at INTEGER,   -- 该公钥钥是否已经被拉黑，处于非活跃状态： non-zero = active, 0 - disable
 	pk CHAR(66),  -- 该用户的公钥
 	nm TEXT,      -- UTF8编码的用户名称
 	bt INTEGER,   -- 生日，0表示未知
-	sx CHAR(1),   -- 性别， 男-M, 女-F，其它值表示为未知
+	sx INTEGER,   -- 性别， 男-0, 女-1，其它值表示为未知
     mt TEXT,      -- 座右铭motto
     fm TEXT,      -- 所在地区 from
     sr TEXT,      -- 来源：自行添加，从某个群里增加，系统自带，等等。
@@ -88,7 +94,7 @@ CREATE TABLE m
 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT, -- 序列号，从1开始，1,2,3,...
 	dt INTEGER,  -- 8字节的时间
-	st CHAR(1),  -- 如果是我方发送的消息，这个字段表示是否发送成功 Y - 成功。接收的消息，这个字段没有意义
+	st INTERGE,  -- 如果是我方发送的消息，这个字段表示是否发送成功 non-zero - 成功, 0 - failed。接收的消息，这个字段没有意义
 	hs CHAR(64), -- 原始消息的SHA256哈希值
 	sd CHAR(44), -- 发送者的公钥，base64编码
 	re CHAR(44), -- 接收者的公钥，base64编码

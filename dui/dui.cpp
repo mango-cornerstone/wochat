@@ -282,8 +282,8 @@ int XButton::Draw(int dx, int dy)
         XBitmap* bitmap;
 
         assert(w > 0 && h > 0);
-        assert(m_parentW > w);
-        assert(m_parentH > h);
+        assert(m_parentR - m_parentL > w);
+        assert(m_parentB - m_parentT > h);
         switch (m_status)
         {
         case XCONTROL_STATE_PRESSED:
@@ -307,9 +307,9 @@ int XButton::Draw(int dx, int dy)
         assert(nullptr != src);
 
         if (XCONTROL_PROP_ROUND & m_property)
-            DUI_ScreenDrawRectRound(dst, m_parentW, m_parentH, src, bitmap->w, bitmap->h, m_left, m_top, m_Color0, m_Color1);
+            DUI_ScreenDrawRectRound(dst, m_parentR - m_parentL, m_parentB - m_parentT, src, bitmap->w, bitmap->h, m_left, m_top, m_Color0, m_Color1);
         else
-            DUI_ScreenDrawRect(dst, m_parentW, m_parentH, src, bitmap->w, bitmap->h, m_left, m_top);
+            DUI_ScreenDrawRect(dst, m_parentR - m_parentL, m_parentB - m_parentT, src, bitmap->w, bitmap->h, m_left, m_top);
     }
 
     return 0;
@@ -322,12 +322,12 @@ int XEditBoxLine::Draw(int dx, int dy)
         U32* dst = m_parentBuf;
         int w = m_right - m_left;
         int h = m_bottom - m_top;
-        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFFFFFFF, w, h, m_left, m_top);
+        DUI_ScreenFillRect(dst, m_parentR - m_parentL, m_parentB - m_parentT, 0xFFFFFFFF, w, h, m_left, m_top);
         // Draw the border
-        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, w + 1, 1, m_left-1, m_top-1);
-        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, w + 2, 1, m_left-1, m_bottom);
-        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, 1, h + 1, m_left-1, m_top-1);
-        DUI_ScreenFillRect(dst, m_parentW, m_parentH, 0xFFAAAAAA, 1, h + 1, m_right, m_top-1);
+        DUI_ScreenFillRect(dst, m_parentR - m_parentL, m_parentB - m_parentT, 0xFFAAAAAA, w + 1, 1, m_left-1, m_top-1);
+        DUI_ScreenFillRect(dst, m_parentR - m_parentL, m_parentB - m_parentT, 0xFFAAAAAA, w + 2, 1, m_left-1, m_bottom);
+        DUI_ScreenFillRect(dst, m_parentR - m_parentL, m_parentB - m_parentT, 0xFFAAAAAA, 1, h + 1, m_left-1, m_top-1);
+        DUI_ScreenFillRect(dst, m_parentR - m_parentL, m_parentB - m_parentT, 0xFFAAAAAA, 1, h + 1, m_right, m_top-1);
     }
     return 0;
 }

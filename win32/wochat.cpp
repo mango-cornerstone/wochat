@@ -1067,6 +1067,11 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 	return 0;
 }
 
+static const U8 utf8Name[]   = { 0x41,0x49,0xE8,0x81,0x8A,0xE5,0xA4,0xA9,0xE6,0x9C,0xBA,0xE5,0x99,0xA8,0xE4,0xBA,0xBA,0 };
+static const U8 utf8Motto[]  = { 0xE4,0xB8,0x80,0xE5,0x88,0x87,0xE7,0x9A,0x86,0xE6,0x9C,0x89,0xE5,0x8F,0xAF,0xE8,0x83,0xBD,0 };
+static const U8 utf8Area[]   = { 0xE5,0xAE,0x87,0xE5,0xAE,0x99,0xE8,0xB5,0xB7,0xE7,0x82,0xB9,0 };
+static const U8 utf8Source[] = { 0xE7,0xB3,0xBB,0xE7,0xBB,0x9F,0xE8,0x87,0xAA,0xE5,0xB8,0xA6,0 };
+
 U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 {
 	U32 ret = WT_FAIL;
@@ -1092,96 +1097,113 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 
 	if (!bAvailabe) // it is the first time to create the DB, so we create the table structure
 	{
+		char sql[SQL_STMT_MAX_LEN + 1] = { 0 };
+		
+		/* create the table at first */
 		rc = sqlite3_prepare_v2(db,
-			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT, p INTEGER, a CHAR(1), dt INTEGER, sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm VARCHAR(128) NOT NULL UNIQUE, i32 BLOB, i128 BLOB)",
+			(const char*)"CREATE TABLE c(id INTEGER PRIMARY KEY,tp INTEGER NOT NULL,i0 INTEGER,i1 INTEGER,tx TEXT,bb BLOB)",
 			-1, &stmt, NULL);
-		if (SQLITE_OK == rc)
-		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_DONE == rc)
-				ret = WT_OK;
-		}
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
 		sqlite3_finalize(stmt);
+
+		rc = sqlite3_prepare_v2(db,
+			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT,pt INTEGER NOT NULL,at INTEGER DEFAULT 1,dt INTEGER,sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm TEXT NOT NULL UNIQUE,b0 BLOB,b1 BLOB)",
+			-1, &stmt, NULL);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
+		sqlite3_finalize(stmt);
+
 		rc = sqlite3_prepare_v2(db,	
-			(const char*)"CREATE TABLE s(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,st CHAR(1),h CHAR(64) NOT NULL UNIQUE,t TEXT)", 
+			(const char*)"CREATE TABLE p(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,at INTEGER DEFAULT 1,pk CHAR(66) NOT NULL UNIQUE,nm TEXT NOT NULL,bt INTEGER DEFAULT 0,sx INTEGER DEFAULT 9,mt TEXT,fm TEXT,sr TEXT,b0 BLOB,b1 BLOB,b2 BLOB)", 
 			-1, &stmt, NULL);
-		if (SQLITE_OK == rc)
-		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_DONE == rc)
-				ret = WT_OK;
-		}
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
 		sqlite3_finalize(stmt);
+
 		rc = sqlite3_prepare_v2(db,
-			(const char*)"CREATE TABLE r(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,h CHAR(64) NOT NULL UNIQUE,t TEXT)", 
+			(const char*)"CREATE TABLE m(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,st INTEGER,hs CHAR(64) NOT NULL UNIQUE,sd CHAR(64) NOT NULL,re CHAR(64) NOT NULL,tp CHAR(1),tx TEXT)", 
 			-1, &stmt, NULL);
-		if (SQLITE_OK == rc)
-		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_DONE == rc)
-				ret = WT_OK;
-		}
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
 		sqlite3_finalize(stmt);
+
 		rc = sqlite3_prepare_v2(db,
-			(const char*)"CREATE TABLE f(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,a CHAR(1),pk CHAR(66),nm VARCHAR(128),mt VARCHAR(128),f VARCHAR(128),s VARCHAR(128),b INTEGER,x CHAR(1),i32 BLOB, i128 BLOB)", 
+			(const char*)"CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,tx TEXT)", 
 			-1, &stmt, NULL);
-		if (SQLITE_OK == rc)
-		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_DONE == rc)
-			{
-				sqlite3_finalize(stmt);
-				rc = sqlite3_prepare_v2(db,
-					(const char*)"INSERT INTO f(a,pk,nm,mt,f,s,b,x,i32,i128) VALUES('Y','03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA',(?),(?),(?),(?),0,'X',(?),(?))",
-					-1, &stmt, NULL);
-				if (SQLITE_OK == rc)
-				{
-					U8 utf8Name[] = { 0x41,0x49,0xE8,0x81,0x8A,0xE5,0xA4,0xA9,0xE6,0x9C,0xBA,0xE5,0x99,0xA8,0xE4,0xBA,0xBA,0 };
-					U8 utf8Motto[] = { 0xE4,0xB8,0x80,0xE5,0x88,0x87,0xE7,0x9A,0x86,0xE6,0x9C,0x89,0xE5,0x8F,0xAF,0xE8,0x83,0xBD,0 };
-					U8 utf8Area[] = { 0xE5,0xAE,0x87,0xE5,0xAE,0x99,0xE8,0xB5,0xB7,0xE7,0x82,0xB9,0 };
-					U8 utf8Source[] = { 0xE7,0xB3,0xBB,0xE7,0xBB,0x9F,0xE8,0x87,0xAA,0xE5,0xB8,0xA6,0 };
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
+		sqlite3_finalize(stmt);
 
-					rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, 17, SQLITE_TRANSIENT);
-					rc = sqlite3_bind_text(stmt, 2, (const char*)utf8Motto, 18, SQLITE_TRANSIENT);
-					rc = sqlite3_bind_text(stmt, 3, (const char*)utf8Area, 12, SQLITE_TRANSIENT);
-					rc = sqlite3_bind_text(stmt, 4, (const char*)utf8Source, 12, SQLITE_TRANSIENT);
+		/* insert some initial data into the tables */
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO c(id,tp,tx) VALUES(%d,1,'WoChat')", WT_PARAM_APPLICATION_NAME);
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
+		sqlite3_finalize(stmt);
 
-					assert(g_aiImage32);
-					assert(g_aiImage128);
-					rc = sqlite3_bind_blob(stmt, 5, g_aiImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
-					rc = sqlite3_bind_blob(stmt, 6, g_aiImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
-					rc = sqlite3_step(stmt);
-					if (SQLITE_DONE == rc)
-					{
-						ret = WT_OK;
-					}
-					sqlite3_finalize(stmt);
-				}
-			}
-		}
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO c(id,tp,tx) VALUES(%d,1,'www.boobooke.com')", WT_PARAM_SERVER_NAME);
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
+		sqlite3_finalize(stmt);
 
-		rc = sqlite3_prepare_v2(db, (const char*)"CREATE TABLE q(id INTEGER PRIMARY KEY AUTOINCREMENT,dt INTEGER,t TEXT)", -1, &stmt, NULL);
-		if (SQLITE_OK == rc)
-		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_DONE == rc)
-				ret = WT_OK;
-		}
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO c(id,tp,i0) VALUES(%d,0,1883)", WT_PARAM_SERVER_PORT);
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
+		sqlite3_finalize(stmt);
+
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO c(id,tp,tx) VALUES(%d,1,'MQTT')", WT_PARAM_NETWORK_PROTOCAL);
+		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
+		sqlite3_finalize(stmt);
+
+		rc = sqlite3_prepare_v2(db,
+			(const char*)"INSERT INTO p(pk,nm,mt,fm,sr,b0,b1) VALUES('03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA',(?),(?),(?),(?),(?),(?))",
+			-1, &stmt, NULL);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, 17, SQLITE_TRANSIENT);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_bind_text(stmt, 2, (const char*)utf8Motto, 18, SQLITE_TRANSIENT);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_bind_text(stmt, 3, (const char*)utf8Area, 12, SQLITE_TRANSIENT);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_bind_text(stmt, 4, (const char*)utf8Source, 12, SQLITE_TRANSIENT);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		assert(g_aiImage32);
+		assert(g_aiImage128);
+		rc = sqlite3_bind_blob(stmt, 5, g_aiImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_bind_blob(stmt, 6, g_aiImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_DONE != rc) goto Exit_CheckWoChatDatabase;
 		sqlite3_finalize(stmt);
 	}
 	else
 	{
 		rc = sqlite3_prepare_v2(db, (const char*)"SELECT count(1) FROM k", -1, &stmt, NULL); 
-		if (SQLITE_OK == rc)
-		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_ROW == rc)
-				ret = WT_OK;
-		}
+		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
+		rc = sqlite3_step(stmt);
+		if (SQLITE_ROW != rc) goto Exit_CheckWoChatDatabase;
 		sqlite3_finalize(stmt);
 	}
-	sqlite3_close(db);
 
+	ret = WT_OK;
+
+Exit_CheckWoChatDatabase:
+	sqlite3_close(db);
 	return ret;
 }
 
@@ -1199,32 +1221,37 @@ int SendConfirmationMessage(U8* pk, U8* hash)
 	return 0;
 }
 
-U16 GetSecretKeyNumber()
+U32 GetSecretKeyNumber(U32* total)
 {
+	U32 ret = WT_FAIL;
 	int count = 0;
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
-	int           rc;
-	U8 sql[SQL_STMT_MAX_LEN] = { 0 };
+	int  rc;
+
 	rc = sqlite3_open16(g_DBPath, &db);
-	if (rc)
+	if (SQLITE_OK != rc)
 	{
 		sqlite3_close(db);
-		return 0;
+		return WT_SQLITE_OPEN_ERR;
 	}
 
-	sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT count(1) FROM k WHERE p=0 AND a='Y'");
-	rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, (const char*)"SELECT count(1) FROM k WHERE pt=0 AND at<>0", -1, &stmt, NULL);
+	if (SQLITE_OK != rc) goto Exit_GetSecretKeyNumber;
 	rc = sqlite3_step(stmt);
-	if (rc == SQLITE_ROW)
-	{
-		count = sqlite3_column_int(stmt, 0);
-	}
-	rc = sqlite3_finalize(stmt);
+	if (rc != SQLITE_ROW) goto Exit_GetSecretKeyNumber;
+	count = sqlite3_column_int(stmt, 0);
+	sqlite3_finalize(stmt);
 
+	if (total)
+		*total = (U32)count;
+
+	ret = WT_OK;
+
+Exit_GetSecretKeyNumber:
 	sqlite3_close(db);
 
-	return (U16)count;
+	return ret;
 }
 
 U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
@@ -1280,6 +1307,7 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 	}
 
 	ret = WT_FAIL;  // now we get the SK, we need to generate the PK
+
 	{
 		secp256k1_pubkey pubkey;
 		size_t pklen = 33;
@@ -1304,7 +1332,7 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 	utf8Password = (U8*)wt_palloc(g_messageMemPool, len);
 	if (utf8Password)
 	{
-		ret = wt_UTF16ToUTF8((U16*)pwd, plen, utf8Password, &len);
+		ret = wt_UTF16ToUTF8((U16*)pwd, plen, utf8Password, nullptr);
 		if (WT_OK != ret)
 		{
 			wt_pfree(utf8Password);
@@ -1345,14 +1373,14 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 		sqlite3_stmt* stmt = NULL;
 		U8 sql[SQL_STMT_MAX_LEN] = { 0 };
 
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(p,a,sk,pk,nm,i32,i128) VALUES(0, 'Y','%s', '%s', (?), (?),(?))", hexSK, hexPK);
-
 		rc = sqlite3_open16(g_DBPath, &db);
 		if (SQLITE_OK != rc)
 		{
 			sqlite3_close(db);
 			return WT_SQLITE_OPEN_ERR;
 		}
+
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(pt,sk,pk,nm,b0,b1) VALUES(0,'%s','%s',(?),(?),(?))", hexSK, hexPK);
 		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -1382,7 +1410,7 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 									ret = WT_OK;
 									sqlite3_finalize(stmt);
 									sqlite3_close(db);
-									goto ExitNewAccount;
+									goto Exit_NewAccount;
 								}
 							}
 						}
@@ -1390,11 +1418,10 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 				}
 			}
 		}
-		sqlite3_finalize(stmt);
 		sqlite3_close(db);
 	}
 
-ExitNewAccount:
+Exit_NewAccount:
 	wt_pfree(utf8Name);
 	return ret;
 }
@@ -1413,7 +1440,7 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 	utf8Password = (U8*)wt_palloc(g_messageMemPool, utf8len);
 	if (utf8Password)
 	{
-		ret = wt_UTF16ToUTF8(pwd, len, utf8Password, &len);
+		ret = wt_UTF16ToUTF8(pwd, len, utf8Password, nullptr);
 		if (WT_OK != ret)
 		{
 			wt_pfree(utf8Password);
@@ -1430,7 +1457,7 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 		sqlite3* db;
 		sqlite3_stmt* stmt = NULL;
 		int  rc;
-		U8 sql[128] = { 0 };
+		U8 sql[64] = { 0 };
 
 		rc = sqlite3_open16(g_DBPath, &db);
 		if (SQLITE_OK != rc)
@@ -1438,7 +1465,7 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 			sqlite3_close(db);
 			return WT_SQLITE_OPEN_ERR;
 		}
-		sprintf_s((char*)sql, 128, "SELECT sk,pk,nm,i32,i128 FROM k WHERE id=%d", idx);
+		sprintf_s((char*)sql, 64, "SELECT sk,pk,nm,b0,b1 FROM k WHERE id=%d", idx);
 		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -1524,9 +1551,8 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 					}
 				}
 			}
+			sqlite3_finalize(stmt);
 		}
-
-		rc = sqlite3_finalize(stmt);
 		sqlite3_close(db);
 	}
 

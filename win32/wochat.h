@@ -38,6 +38,7 @@ extern wchar_t   g_DBPath[MAX_PATH + 1];
 extern HWND		 g_hWndShareScreen;
 extern HWND		 g_hWndChatHistory;
 extern HWND		 g_hWndAudioCall;
+extern HWND		 g_hWndSearchAll;
 
 extern U8* g_SK;
 extern U8* g_PK;
@@ -79,6 +80,7 @@ extern IDWriteFactory* g_pDWriteFactory;
 #define WM_WIN_SCREENTHREAD		(WM_USER + 401)
 #define WM_WIN_CHATHISTHREAD	(WM_USER + 402)
 #define WM_WIN_AUDIOTHREAD		(WM_USER + 403)
+#define WM_WIN_SEARCHALLTHREAD	(WM_USER + 404)
 
 #define WM_WIN_BRING_TO_FRONT	(WM_USER + 500)
 
@@ -190,9 +192,6 @@ typedef struct XFriend
 	U8   hLarge;			    // the height in pixel of this icon
 } XFriend;
 
-
-#define SQL_STMT_MAX_LEN		512
-
 U32 CheckWoChatDatabase(LPCWSTR lpszPath);
 
 int PushTaskIntoSendMessageQueue(MessageTask* message_task);
@@ -207,7 +206,7 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len);
 
 int GetSecretKey(U8* sk, U8* pk);
 
-U16 GetSecretKeyNumber();
+U32 GetSecretKeyNumber(U32* total);
 
 IDWriteTextFormat* GetTextFormat(U8 idx);
 

@@ -9,6 +9,16 @@
 #define DUI_ALLOCSET_SMALL_INITSIZE     (1 * 1024)
 #define DUI_ALLOCSET_SMALL_MAXSIZE	    (8 * 1024)
 
+#define DUI_MODE0       0
+#define DUI_MODE1       1
+#define DUI_MODE2       2
+#define DUI_MODE3       3
+#define DUI_MODE4       4
+#define DUI_MODE5       5
+#define DUI_MODE6       6
+#define DUI_MODE7       7
+#define DUI_MODETOTAL   8
+
 #define DUI_MAX_CONTROLS            16 
 #define DUI_MAX_BUTTON_BITMAPS      (DUI_MAX_CONTROLS << 2)
 
@@ -44,15 +54,6 @@ enum
     DEFAULT_SCROLLTHUMB_COLORA = 0xFFAAABAD
 };
 
-typedef struct XDirtyList
-{
-    XDirtyList* next;
-    int left;
-    int top;
-    int right;
-    int bottom;
-} XDirtyList;
-
 template <class T>
 class DUI_NO_VTABLE XWindowT
 {
@@ -80,13 +81,11 @@ public:
     XRECT   m_area = { 0 };  // the area of this window in the client area of parent window
 
     MemoryPoolContext m_pool = nullptr;
-    // XDirtyList* m_dirtylist = nullptr;
 
-    XControl* m_controlArray[DUI_MAX_CONTROLS];
-    wchar_t*  m_tooltip[DUI_MAX_CONTROLS];
-    XBitmap   m_bitmapArray[DUI_MAX_BUTTON_BITMAPS];
+    XControl* m_ctlArray[DUI_MODETOTAL][DUI_MAX_CONTROLS];
+    XBitmap   m_bmpArray[DUI_MODETOTAL][DUI_MAX_BUTTON_BITMAPS];
+    int       m_maxCtl[DUI_MODETOTAL];
 
-    int m_maxControl = 0; // how many controls this window has.
     int m_activeControl = -1;
 
     //ProcessOSMessage m_messageFuncPointerTab[256] = { 0 };  // we only handle 255 messages that should be enough
@@ -103,6 +102,7 @@ public:
     U32  m_status   = DUI_STATUS_VISIBLE;
     U32  m_property = DUI_PROP_NONE;
     U32  m_message  = DUI_NULL;
+    U16  m_mode     = DUI_MODE0;
 
     U32  m_backgroundColor = DEFAULT_BACKGROUND_COLOR;
     U32  m_scrollbarColor  = DEFAULT_SCROLLBKG_COLOR;
@@ -111,9 +111,28 @@ public:
 public:
     XWindowT()
     {
+        int i, j;
+        XBitmap* p;
+
+        for(i=0; i< DUI_MODETOTAL; i++)
+            m_maxCtl[i] = 0;
+
+        for (j = 0; j < DUI_MODETOTAL; j++)
+            for (i = 0; i < DUI_MAX_CONTROLS; i++)
+                m_ctlArray[j][i] = nullptr;
+
+        for (j = 0; j < DUI_MODETOTAL; j++)
+            for (i = 0; i < DUI_MAX_BUTTON_BITMAPS; i++)
+            {
+                p = &(m_bmpArray[j][i]);
+                p->id = p->w = p->h = 0;
+                p->data = nullptr;
+            }
+
+#if 0        
         for (int i = 0; i < DUI_MAX_CONTROLS; i++)
             m_controlArray[i] = nullptr;
-#if 0        
+
         //m_messageFuncPointerTab[DUI_NULL] = nullptr;
         for (int i = 0; i < 256; i++) 
             m_messageFuncPointerTab[i] = nullptr;
@@ -137,16 +156,39 @@ public:
 
     ~XWindowT()
     {
+        int i, j;
         XControl* xctl;
-        for (int i = 0; i < m_maxControl; i++)
-        {
-            xctl = m_controlArray[i];
-            assert(nullptr != xctl);
-            xctl->Term();
-        }
+
+        for (j = 0; j < DUI_MODETOTAL; j++)
+            for (i = 0; i < DUI_MAX_CONTROLS; i++)
+            {
+                xctl = m_ctlArray[j][i];
+                if (xctl)
+                    xctl->Term();
+            }
 
         wt_mempool_destroy(m_pool);
         m_pool = nullptr;
+    }
+
+    void AfterSetMode()  {}
+
+    void SetMode(U16 mode)
+    {
+        assert(mode < DUI_MODETOTAL);
+        m_mode = mode;
+
+        T* pT = static_cast<T*>(this);
+        pT->AfterSetMode();
+
+        // because the mode is changed, this window needs to redraw
+        m_status |= DUI_STATUS_NEEDRAW;  // need to redraw this virtual window
+        InvalidateDUIWindow();           // set the gloabl redraw flag so next paint routine will do the paint work
+    }
+
+    U16 GetMode() 
+    {
+        return m_mode;
     }
 
     static int XControlAction(void* obj, U32 uMsg, U64 wParam, U64 lParam)
@@ -246,10 +288,10 @@ public:
         InvalidateDUIWindow();           // set the gloabl redraw flag so next paint routine will do the paint work
     }
 
-    bool IsRealWindow(void* hwnd)
+    bool IsRealWindow(void* hWnd)
     {
 #ifdef _WIN32
-        return (::IsWindow((HWND)hwnd));
+        return (::IsWindow((HWND)hWnd));
 #else
         return false;
 #endif
@@ -258,6 +300,9 @@ public:
     // Windows Id is used for debugging purpose
     void SetWindowId(const U8* id, U8 bytes)
     {
+        U32 initSize = DUI_ALLOCSET_SMALL_INITSIZE;
+        U32 maxSize = DUI_ALLOCSET_SMALL_MAXSIZE;
+
         if (bytes > 7)
             bytes = 7;
 
@@ -265,6 +310,15 @@ public:
             m_Id[i] = *id++;
 
         m_Id[bytes] = 0; // zero-terminated string
+
+        assert(!m_pool);
+        if (DUI_PROP_LARGEMEMPOOL & m_property)
+        {
+            initSize = DUI_ALLOCSET_DEFAULT_INITSIZE;
+            maxSize = DUI_ALLOCSET_DEFAULT_MAXSIZE;
+        }
+        m_pool = wt_mempool_create((const char*)m_Id, 0, initSize, maxSize);
+        assert(m_pool);
     }
 
     bool IsVisible() const
@@ -282,28 +336,6 @@ public:
         m_status &= ~DUI_STATUS_NEEDRAW;
     }
 
-#if 0
-    void PostWindowHide() {}
-    void WindowHide()
-    {
-        m_status &= ~DUI_STATUS_VISIBLE;
-
-        UpdateSize(nullptr, nullptr);
-
-        T* pT = static_cast<T*>(this);
-        pT->PostWindowHide();
-    }
-
-    void PostWindowShow() {}
-    void WindowShow()
-    {
-        m_status |= DUI_STATUS_VISIBLE;
-        T* pT = static_cast<T*>(this);
-        pT->PostWindowShow();
-        m_status |= DUI_STATUS_NEEDRAW;  // need to redraw this virtual window
-        InvalidateDUIWindow();           // set the gloabl redraw flag so next paint routine will do the paint work
-    }
-#endif
     bool PostWindowMessage(U32 message, U64 wParam = 0, U64 lParam = 0)
     {
         bool bRet = false;
@@ -323,36 +355,39 @@ public:
     // scan the whole control array and reset them to the status one by one
     int SetAllControlStatus(U32 status, U8 mouse_event) 
     { 
-        int ret = 0;
+        int r = 0;
         XControl* xctl;
 
         if (DUI_PROP_BTNACTIVE & m_property)
         {
             U32 ctlStatus;
-            for (int i = 0; i < m_maxControl; i++)
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
-                assert(xctl->m_Id == i);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
                 if (xctl->IsVisible())
                 {
                     ctlStatus = (i != m_activeControl) ? status : XCONTROL_STATE_ACTIVE;
-                    ret += xctl->setStatus(ctlStatus, mouse_event);
+                    r += xctl->setStatus(ctlStatus, mouse_event);
                 }
             }
         }
         else
         {
-            for (int i = 0; i < m_maxControl; i++)
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
-                assert(xctl->m_Id == i);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
                 if (xctl->IsVisible())
-                    ret += xctl->setStatus(status, mouse_event);
+                    r += xctl->setStatus(status, mouse_event);
             }
         }
-        return ret;
+
+        return r;
     }
 
     void UpdateControlPosition() {}
@@ -363,13 +398,17 @@ public:
         U32* buff = nullptr;
         U8 status = m_status & (DUI_STATUS_VISIBLE | DUI_STATUS_NEEDRAW);
 
-        if ((DUI_STATUS_VISIBLE | DUI_STATUS_NEEDRAW) == status)
+        if ((DUI_STATUS_VISIBLE | DUI_STATUS_NEEDRAW) == status) // this window is visible and need to draw
             buff = m_screen;
 
-        if (buff)
+        if (buff) // if this window has screen data to draw
         {
             int w = m_area.right - m_area.left;
             int h = m_area.bottom - m_area.top;
+
+            assert(w > 0);
+            assert(h > 0);
+
             ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
             if (pD2DRenderTarget)
             {
@@ -414,11 +453,13 @@ public:
         {
             U32 prop;
             XControl* xctl;
-            for (int i = 0; i < m_maxControl; i++)
+            
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
-                assert(xctl->m_Id == i);
+                assert(xctl->m_Id == ((m_mode << 8)|i));
                 if (xctl->IsVisible())
                     xctl->DrawText(m_area.left, m_area.top, surface, brushText, brushSelText, brushCaret);
             }
@@ -437,11 +478,13 @@ public:
         // We only draw this virtual window when 1: it is visible, and 2: it needs draw
         if (((DUI_STATUS_VISIBLE | DUI_STATUS_NEEDRAW) == status) && (nullptr != m_screen))
         {
+            XControl* xctl;
             int w = m_area.right - m_area.left;
             int h = m_area.bottom - m_area.top;
-            XControl* xctl;
 
-            // assert(nullptr != m_screen);
+            assert(w > 0);
+            assert(h > 0);
+
             // fill the whole screen of this virutal window with a single color
             DUI_ScreenClear(m_screen, m_size, m_backgroundColor);
 
@@ -464,11 +507,12 @@ public:
             }
 
             // draw the controls within this window
-            for (int i = 0; i < m_maxControl; i++)
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
-                assert(xctl->m_Id == i);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
                 if (xctl->IsVisible())
                     xctl->Draw(m_area.left, m_area.top);
             }
@@ -493,26 +537,26 @@ public:
         else
         {
             XControl* xctl;
+
             assert(r);
+            assert(r->right > r->left);
+            assert(r->bottom > r->top);
+
             m_area.left = r->left;
             m_area.top = r->top;
             m_area.right = r->right;
             m_area.bottom = r->bottom;
             m_size = (U32)((r->right - r->left) * (r->bottom - r->top));
 
-            int w = r->right - r->left;
-            int h = r->bottom - r->top;
-            assert(w >= 0);
-            assert(h >= 0);
-
             m_status |= DUI_STATUS_VISIBLE;
 
-            for (int i = 0; i < m_maxControl; i++)
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
-                assert(xctl->m_Id == i);
-                xctl->AttachParent(m_screen, w, h);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
+                xctl->AttachParent(m_screen, m_area.left, m_area.top, m_area.right, m_area.bottom);
             }
 
             T* pT = static_cast<T*>(this);
@@ -521,6 +565,7 @@ public:
 
         m_status |= DUI_STATUS_NEEDRAW;  // need to redraw this virtual window
         InvalidateDUIWindow();
+
         return DUI_STATUS_NEEDRAW;
     }
 
@@ -532,16 +577,19 @@ public:
 
         bool bInMyArea = XWinPointInRect(xPos, yPos, &m_area); // is the point in my area?
 
-        if (bInMyArea && m_maxControl) // the mouse is hovering in my area and I also have the controls
+        assert(m_mode < DUI_MODETOTAL);
+        if (bInMyArea && m_maxCtl[m_mode]) // the mouse is hovering in my area and I also have the controls
         {
             int id = -1;
             XControl* xctl;
             int dx = xPos - m_area.left;
             int dy = yPos - m_area.top;
-            for (int i = 0; i < m_maxControl; i++)
+
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
                 if (xctl->IsVisible())
                 {
                     id = xctl->DoMouseHover(dx, dy);
@@ -559,10 +607,12 @@ public:
         int r = 0;
         XControl* xctl;
 
-        for (int i = 0; i < m_maxControl; i++)
+        assert(m_mode < DUI_MODETOTAL);
+        for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
         {
-            xctl = m_controlArray[i];
+            xctl = m_ctlArray[m_mode][i];
             assert(nullptr != xctl);
+            assert(xctl->m_Id == ((m_mode << 8) | i));
             if (xctl->IsVisible())
                 r += xctl->DoMouseLeave();
         }
@@ -570,9 +620,7 @@ public:
         if (DUI_PROP_HASVSCROLL & m_property) // handle the vertical bar
         {
             U32 statusOld = m_status;
-            
             m_status &= (~DUI_STATUS_VSCROLL); // let the vertical bar to disappear
-            
             if (statusOld != m_status)
                 r++;
         }
@@ -594,7 +642,7 @@ public:
     int Do_DUI_MOUSEWHEEL(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
     int On_DUI_MOUSEWHEEL(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
-        int r = DUI_STATUS_NODRAW;
+        int r = 0;
         if ((DUI_PROP_HANDLEWHEEL & m_property) && !DUIWindowInDragMode())
         {
             int xPos = GET_X_LPARAM(lParam);
@@ -667,6 +715,7 @@ public:
             int dx = -1;
             int dy = -1;
             XControl* xctl;
+
             if (bInMyArea) // the mosue is in my area
             {
                 dx = xPos - m_area.left;
@@ -700,10 +749,12 @@ public:
                 }
             }
 
-            for (int i = 0; i < m_maxControl; i++)
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
                 if (xctl->IsVisible())
                     r += xctl->DoMouseMove(dx, dy, m_activeControl);
             }
@@ -760,7 +811,9 @@ public:
                     if (xPos >= (m_area.right - m_scrollWidth)) // the mouse is in the right vertical bar area
                     {
                         m_status &= (~DUI_STATUS_VSCROLL); // let the vertical bar to disappear at first
-                        if (m_sizeAll.cy > h)   // the total page size is greater than the real window size, we need to show the vertical bar
+
+                        // the total page size is greater than the real window size, we need to show the vertical bar
+                        if (m_sizeAll.cy > h)   
                         {
                             int thumb_start = (m_ptOffset.y * h) / m_sizeAll.cy; // the position of the thumb relative to m_area
                             int thumb_height = (h * h) / m_sizeAll.cy;  // the thumb height, the bigger m_sizeAll.cy, the smaller of thumb height
@@ -811,26 +864,31 @@ public:
         }
 
         idxActive = -1;
-        for (int i = 0; i < m_maxControl; i++)
+        assert(m_mode < DUI_MODETOTAL);
+        for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
         {
-            xctl = m_controlArray[i];
+            xctl = m_ctlArray[m_mode][i];
             assert(nullptr != xctl);
-            assert(xctl->m_Id == i);
+            assert(xctl->m_Id == ((m_mode << 8) | i));
             if (xctl->IsVisible())
                 r += xctl->DoMouseLBClickDown(dx, dy, &idxActive);
         }
 
         if (idxActive >= 0)
         {
-            assert(idxActive < m_maxControl);
-            xctl = m_controlArray[idxActive];
+            U16 realId = ((U16)idxActive) & 0xFF;
+
+            assert(realId < m_maxCtl[m_mode]);
+            xctl = m_ctlArray[m_mode][realId];
+            assert(xctl);
+            assert(xctl->pfAction);
             xctl->pfAction(this, m_message, 0, (LPARAM)idxActive);
             ClearDUIWindowLBtnDown();
         }
 
         if (DUI_PROP_MOVEWIN & m_property)
         {
-            if(bInMyArea && (- 1 == idxActive))  // if the mouse does not hit the button, we can move the whole real window
+            if(bInMyArea && (-1 == idxActive))  // if the mouse does not hit the button, we can move the whole real window
                 PostWindowMessage(WM_NCLBUTTONDOWN, HTCAPTION, lParam);
         }
 
@@ -838,13 +896,15 @@ public:
         {
             if (idxActive >= 0)
             {
-                assert(idxActive < m_maxControl);
+                idxActive &= 0xFF;
+
+                assert(idxActive < m_maxCtl[m_mode]);
                 assert(m_activeControl >= 0);
-                assert(m_activeControl < m_maxControl);
-                xctl = m_controlArray[m_activeControl];
+                assert(m_activeControl < m_maxCtl[m_mode]);
+                xctl = m_ctlArray[m_mode][m_activeControl];
                 xctl->setStatus(XCONTROL_STATE_NORMAL, XMOUSE_LBDOWN); // set the old active button to normal state
                 m_activeControl = idxActive;
-                xctl = m_controlArray[idxActive];
+                xctl = m_ctlArray[m_mode][idxActive];
                 xctl->setStatus(XCONTROL_STATE_PRESSED, XMOUSE_LBDOWN); // set the new active button to pressed state
                 r++;
             }
@@ -885,11 +945,12 @@ public:
             dy = yPos - m_area.top;
         }
 
-        for (int i = 0; i < m_maxControl; i++)
+        assert(m_mode < DUI_MODETOTAL);
+        for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
         {
-            xctl = m_controlArray[i];
+            xctl = m_ctlArray[m_mode][i];
             assert(nullptr != xctl);
-            assert(xctl->m_Id == i);
+            assert(xctl->m_Id == ((m_mode << 8) | i));
             if (xctl->IsVisible())
                 r += xctl->DoMouseRBClickUp(dx, dy, xPos, yPos, m_hWnd);
         }
@@ -928,21 +989,25 @@ public:
             dy = yPos - m_area.top;
         }
 
-        for (int i = 0; i < m_maxControl; i++)
+        assert(m_mode < DUI_MODETOTAL);
+        for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
         {
-            xctl = m_controlArray[i];
+            xctl = m_ctlArray[m_mode][i];
             assert(nullptr != xctl);
-            assert(xctl->m_Id == i);
+            assert(xctl->m_Id == ((m_mode << 8) | i));
             if (xctl->IsVisible())
                 r += xctl->DoMouseLBClickUp(dx, dy, &idxActive);
         }
 
-        if (DUI_PROP_BTNACTIVE & m_property) // this window has active button, just like radio button group
+        // this window has active button, just like radio button group
+        if ((DUI_PROP_BTNACTIVE & m_property) && (idxActive >=0))
         {
-            assert(idxActive < m_maxControl);
+            idxActive &= 0xFF;
+           
+            assert(idxActive < m_maxCtl[m_mode]);
             assert(m_activeControl >= 0);
-            assert(m_activeControl < m_maxControl);
-            xctl = m_controlArray[m_activeControl];
+            assert(m_activeControl < m_maxCtl[m_mode]);
+            xctl = m_ctlArray[m_mode][m_activeControl];
             xctl->setStatus(XCONTROL_STATE_ACTIVE, XMOUSE_LBUP);
             r++;
         }
@@ -986,40 +1051,6 @@ public:
         return ret;
     }
 
-#if 0
-    int Do_DUI_SETCURSOR(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
-    int On_DUI_SETCURSOR(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
-    {
-        int r = 0;
-
-        XControl* xctl;
-        int xPos = (int)wParam;
-        int yPos = (int)lParam;
-        bool inner;
-
-        // the original xPos/yPos is related to the client area system of the host window. 
-        xPos -= m_area.left;
-        yPos -= m_area.top;
-        for (int i = 0; i < m_maxControl; i++)
-        {
-            xctl = m_controlArray[i];
-            assert(nullptr != xctl);
-            if (xctl->IsOverMe(xPos, yPos, &inner))
-            {
-                r++;
-                break;
-            }
-        }
-
-        T* pT = static_cast<T*>(this);
-        r += pT->Do_DUI_SETCURSOR(uMsg, wParam, lParam, lpData);
-
-        if (r)
-            SetDUIWindowCursor();
-        return r;
-    }
-#endif
-
     int Do_DUI_CHAR(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
     int On_DUI_CHAR(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
@@ -1029,15 +1060,15 @@ public:
             if (DUI_STATUS_ISFOCUS & m_status) // this window has the focus
             {
                 XControl* xctl;
-                for (int i = 0; i < m_maxControl; i++)
+                assert(m_mode < DUI_MODETOTAL);
+                for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
                 {
-                    xctl = m_controlArray[i];
+                    xctl = m_ctlArray[m_mode][i];
                     assert(nullptr != xctl);
-                    assert(xctl->m_Id == i);
+                    assert(xctl->m_Id == ((m_mode << 8) | i));
                     if (xctl->IsVisible())
                         r += xctl->OnKeyBoard(uMsg, wParam, lParam);
                 }
-
                 T* pT = static_cast<T*>(this);
                 r += pT->Do_DUI_CHAR(uMsg, wParam, lParam, lpData);
                 if (r)
@@ -1059,11 +1090,12 @@ public:
             if (DUI_STATUS_ISFOCUS & m_status)  // this window has the focus
             {
                 XControl* xctl;
-                for (int i = 0; i < m_maxControl; i++)
+                assert(m_mode < DUI_MODETOTAL);
+                for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
                 {
-                    xctl = m_controlArray[i];
+                    xctl = m_ctlArray[m_mode][i];
                     assert(nullptr != xctl);
-                    assert(xctl->m_Id == i);
+                    assert(xctl->m_Id == ((m_mode << 8) | i));
                     if (xctl->IsVisible())
                         r += xctl->OnKeyBoard(uMsg, wParam, lParam);
                 }
@@ -1087,11 +1119,13 @@ public:
         if ((DUI_PROP_HANDLETIMER & m_property))
         {
             XControl* xctl;
-            for (int i = 0; i < m_maxControl; i++)
+
+            assert(m_mode < DUI_MODETOTAL);
+            for (U16 i = 0; i < m_maxCtl[m_mode]; i++)
             {
-                xctl = m_controlArray[i];
+                xctl = m_ctlArray[m_mode][i];
                 assert(nullptr != xctl);
-                assert(xctl->m_Id == i);
+                assert(xctl->m_Id == ((m_mode << 8) | i));
                 if (xctl->IsVisible())
                     r += xctl->OnTimer();
             }
@@ -1134,8 +1168,9 @@ public:
     int Do_DUI_CREATE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) { return 0; }
     int On_DUI_CREATE(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
     {
+        int i, j;
         int r = 0;
-        T* pT = static_cast<T*>(this);
+        XControl* xctl;
 
 #ifdef _WIN32
         m_hWnd = (HWND)wParam;
@@ -1143,35 +1178,18 @@ public:
 #else
         m_hWnd = nullptr;
 #endif
+        assert(m_pool); // the memory pool has been created before this call
+        T* pT = static_cast<T*>(this);
+        pT->InitControl();
+
+        for (j = 0; j < DUI_MODETOTAL; j++)
         {
-            U32 initSize = DUI_ALLOCSET_SMALL_INITSIZE;
-            U32 maxSize = DUI_ALLOCSET_SMALL_MAXSIZE;
-
-            if (DUI_PROP_LARGEMEMPOOL & m_property)
+            for (i = 0; i < DUI_MAX_CONTROLS; i++)
             {
-                initSize = DUI_ALLOCSET_DEFAULT_INITSIZE;
-                maxSize = DUI_ALLOCSET_DEFAULT_MAXSIZE;
-            }
-            
-            if(m_Id[0] != '\0')
-                m_pool = wt_mempool_create((const char*)m_Id, 0, initSize, maxSize);
-            else 
-                m_pool = wt_mempool_create("DUI_WIN", 0, initSize, maxSize);
-
-            if (nullptr != m_pool)
-            {
-                pT->InitControl();
-                XControl* xctl;
-                for (int i = 0; i < m_maxControl; i++)
-                {
-                    xctl = m_controlArray[i];
-                    assert(nullptr != xctl);
-                    assert(xctl->m_Id == i);
+                xctl = m_ctlArray[j][i];
+                if (xctl)
                     xctl->pfAction = XControlAction;
-                }
             }
-            else
-                SetDUIWindowInitFailed();
         }
 
         r = pT->Do_DUI_CREATE(uMsg, wParam, lParam, lpData);

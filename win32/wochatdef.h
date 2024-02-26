@@ -1,10 +1,12 @@
 #ifndef __WT_WOCHATDEF_H__
 #define __WT_WOCHATDEF_H__
 
-#define	XWIN_CARET_TIMER			666
+#define SQL_STMT_MAX_LEN	256
 
-#define MY_ICON_SIZE32				32
-#define MY_ICON_SIZE128				128
+#define	XWIN_CARET_TIMER	666
+
+#define MY_ICON_SIZE32		32
+#define MY_ICON_SIZE128		128
 
 #define IDM_EDITBOX_COPY			1000
 #define IDM_EDITBOX_CUT				1001

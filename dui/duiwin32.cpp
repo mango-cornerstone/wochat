@@ -299,7 +299,7 @@ int XEditBox::Draw(int dx, int dy)
         if (m_Height > (m_bottom - m_top)) // we need to draw the vertical bar
         {
             // Draw the vertical scroll bar
-            DUI_ScreenFillRect(m_parentBuf, m_parentW, m_parentH, 0xFF333333, 8, H, m_right2 - 8, m_top2);
+            DUI_ScreenFillRect(m_parentBuf, m_parentR - m_parentL, m_parentB - m_parentT, 0xFF333333, 8, H, m_right2 - 8, m_top2);
             //DUI_ScreenFillRectRound(m_screen, w, h, m_thumbColor, thumb_width, thumb_height, w - m_scrollWidth + 1, thumb_start, m_scrollbarColor, 0xFFD6D3D2);
         }
     }

@@ -26,6 +26,7 @@
 #define IDC_STATIC_PWD1			172
 #define IDC_STATIC_NNAME		173
 #define IDC_STATIC_NPWD			174
+#define IDB_IMPORT				175
 
 #define IDD_SEARCHADD			180
 #define IDC_BTN_SEARCH			181

@@ -37,6 +37,7 @@
 #include "winscreen.h"
 #include "winchathist.h"
 #include "winaudiocall.h"
+#include "winsearch.h"
 
 static const U8* default_pkAI = (const U8*)"03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA";
 
@@ -82,6 +83,7 @@ HANDLE				g_MQTTPubEvent;
 HWND				g_hWndShareScreen = nullptr;
 HWND				g_hWndChatHistory = nullptr;
 HWND				g_hWndAudioCall = nullptr;
+HWND				g_hWndSearchAll = nullptr;
 
 
 CRITICAL_SECTION    g_csMQTTSub;
@@ -736,17 +738,13 @@ public:
 			m_win5.UpdateSize(nullptr);
 			break;
 		case AppMode::ModeSetting:
-			// windows 1
-			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_splitterHPosfix0;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
-			m_win1.UpdateSize(r, dst);
-			dst += size;
+			m_win1.UpdateSize(nullptr);
 			// windows 2
-			r->top = m_splitterHPosfix0 + SPLITLINE_WIDTH; r->bottom = m_rectClient.bottom;
-			size = (U32)((r->right - r->left) * (r->bottom - r->top));
+			r->left = r->right; r->right = m_splitterVPos; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
 			m_win2.UpdateSize(r, dst);
-			// windows 3
+			size = (U32)((r->right - r->left) * (r->bottom - r->top));
 			dst += size;
+			// windows 3
 			r->left = m_splitterVPos + SPLITLINE_WIDTH; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
 			m_win3.UpdateSize(r, dst);
 			m_win4.UpdateSize(nullptr);
@@ -756,6 +754,7 @@ public:
 		case AppMode::ModeCoin:
 		case AppMode::ModeFavorite:
 		case AppMode::ModeFile:
+			// windows 1
 			r->left = r->right; r->right = m_rectClient.right; r->top = m_rectClient.top; r->bottom = m_rectClient.bottom;
 			m_win1.UpdateSize(r, dst);
 			m_win2.UpdateSize(nullptr);
@@ -873,8 +872,11 @@ public:
 
 		if (wParam == 0)
 		{
-			U8 ctlId = (U8)lParam;
-			ClearDUIWindowLBtnDown();
+			U16 ctlId = (U16)lParam;
+			U16 mode = m_win0.GetMode();
+
+			//ClearDUIWindowLBtnDown();
+			ctlId &= 0xFF;
 			switch (ctlId)
 			{
 			case XWIN0_BUTTON_ME:
@@ -925,34 +927,85 @@ public:
 
 		if (wParam == 0)
 		{
-			U8 ctlId = (U8)lParam;
+			U16 ctlId = (U16)lParam;
+			U16 mode = ctlId >> 8;
+			ctlId &= 0xFF;
+
+			U16 m1 = m_win1.GetMode();
+			ATLASSERT(m1 == mode);
+
 			ClearDUIWindowLBtnDown();
-			switch (ctlId)
+			switch (mode)
 			{
-			case XWIN1_BUTTON_MYICON:
+			case WIN1_MODE_TALK:
+				if (ctlId == XWIN1_TALK_BUTTON_SEARCH)
 				{
-					WCHAR path[MAX_PATH + 1] = { 0 };
-					U32 rc = m_win1.SelectIconFile(path);
-					if (WT_OK == rc)
-					{
-						rc++;
-					}
+					if (g_dwMainThreadID)
+						::PostThreadMessage(g_dwMainThreadID, WM_WIN_SEARCHALLTHREAD, 0, 0L);
+
 				}
 				break;
-			case XWIN1_BUTTON_SEARCH:
-			{
-				INT_PTR result = DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_SEARCHADD), m_hWnd, SearchDialogProc);
-			}
+			case WIN1_MODE_ME:
+				switch (ctlId)
+				{
+				case XWIN1_ME_BUTTON_MYICON:
+					{
+						WCHAR path[MAX_PATH + 1] = { 0 };
+						U32 rc = m_win1.SelectIconFile(path);
+						if (WT_OK == rc)
+						{
+							rc++;
+						}
+					}
+					break;
+				case XWIN1_ME_BUTTON_PUBLICKEY:
+					m_win1.CopyPublicKey();
+					break;
+				default:
+					break;
+				}
+				break;
+			case WIN1_MODE_FRIEND:
+				if (ctlId == XWIN1_FRIEND_BUTTON_SEARCH)
+				{
+					INT_PTR result = DialogBox(g_hInstance, MAKEINTRESOURCE(IDD_SEARCHADD), m_hWnd, SearchDialogProc);
+				}
+				break;
+			case WIN1_MODE_TBD:
 				break;
 			default:
+				ATLASSERT(0);
 				break;
 			}
 		}
+
 		return 0;
 	}
 
 	LRESULT OnWin2Message(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 	{
+		U16 mode = (U16)wParam;
+
+		switch (mode)
+		{
+		case WIN2_MODE_TALK:
+			break;
+		case WIN2_MODE_FRIEND:
+			{
+				WTFriend* people = (WTFriend*)lParam;
+				if (people)
+				{
+					m_win3.SetFriendPointer(people);
+					Invalidate();
+				}
+			}
+			break;
+		case WIN2_MODE_SETTING:
+			break;
+		default:
+			ATLASSERT(0);
+			break;
+		}
 		return 0;
 	}
 
@@ -1087,7 +1140,7 @@ public:
 		m_splitterVPos = 0;
 		m_splitterHPos = 0;
 
-		m_win1.SetMode(WIN1_MODE_SHOWME);
+		m_win1.SetMode(WIN1_MODE_ME);
 		AdjustDUIWindowPosition();
 
 		return WT_OK;
@@ -1104,9 +1157,9 @@ public:
 		ATLASSERT(m_splitterVPos > 0);
 		ATLASSERT(m_splitterHPos > 0);
 
-		m_win1.SetMode(WIN1_MODE_SHOWSEARCH);
-		m_win2.SetMode(WIN2_MODE_SHOWTALK);
-		m_win3.SetMode(WIN3_MODE_SHOWGROUP);
+		m_win1.SetMode(WIN1_MODE_TALK);
+		m_win2.SetMode(WIN2_MODE_TALK);
+		m_win3.SetMode(WIN3_MODE_TALK);
 		AdjustDUIWindowPosition();
 
 		return WT_OK;
@@ -1122,9 +1175,9 @@ public:
 		m_splitterHPos = 0;
 		ATLASSERT(m_splitterVPos > 0);
 
-		m_win1.SetMode(WIN1_MODE_SHOWSEARCH);
-		m_win2.SetMode(WIN2_MODE_SHOWFRIEND);
-		m_win3.SetMode(WIN3_MODE_SHOWFRIEND);
+		m_win1.SetMode(WIN1_MODE_FRIEND);
+		m_win2.SetMode(WIN2_MODE_FRIEND);
+		m_win3.SetMode(WIN3_MODE_FRIEND);
 
 		AdjustDUIWindowPosition();
 
@@ -1140,7 +1193,7 @@ public:
 		m_splitterVPos = 0;
 		m_splitterHPos = 0;
 
-		m_win1.SetMode(WIN1_MODE_SHOWTBD);
+		m_win1.SetMode(WIN1_MODE_TBD);
 		AdjustDUIWindowPosition();
 
 		return WT_OK;
@@ -1150,15 +1203,14 @@ public:
 	{
 		ATLASSERT(AppMode::ModeSetting == m_mode);
 
-		m_splitterHPosfix0 = XWIN1_HEIGHT;
+		m_splitterHPosfix0 = 0;
 		m_splitterHPosfix1 = 0;
 		m_splitterVPos = m_splitterVPosOld;
 		m_splitterHPos = 0;
 		ATLASSERT(m_splitterVPos > 0);
 
-		m_win1.SetMode(WIN1_MODE_SHOWSEARCH);
-		m_win2.SetMode(WIN2_MODE_SHOWSETTING);
-		m_win3.SetMode(WIN3_MODE_SHOWSETTING);
+		m_win2.SetMode(WIN2_MODE_SETTING);
+		m_win3.SetMode(WIN3_MODE_SETTING);
 		AdjustDUIWindowPosition();
 
 		return WT_OK;
@@ -1689,6 +1741,9 @@ public:
 					case WM_WIN_AUDIOTHREAD:
 						rc = CreateAudioCallThread(default_pkAI);
 						break;
+					case WM_WIN_SEARCHALLTHREAD:
+						rc = CreateSearchAllThread(default_pkAI);
+						break;
 					default:
 						break;
 					}
@@ -1860,7 +1915,7 @@ static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 		DWRITE_FONT_WEIGHT_NORMAL,
 		DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL,
-		16.f,
+		18.f,
 		L"en-US",
 		&(g_pTextFormat[idx])
 	);

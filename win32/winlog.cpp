@@ -3,6 +3,10 @@
 #include "wochat.h"
 #include "winlog.h"
 
+static const wchar_t txtVeryBad[] = { 0x53d1, 0x751f, 0x9519, 0x8bef, 0 };
+static const wchar_t txtVeryGood[] = { 0x4e00, 0x5207, 0x6b63, 0x5e38, 0 };
+static const wchar_t txtImportData[] = { 0x5bfc,0x5165, 0 };
+
 static wchar_t titleRegistration[] = {0x6ce8, 0x518c, 0x8d26,0x53f7, 0 };
 static wchar_t titleLogin[] = { 0x767b, 0x5f55, 0};
 static wchar_t txtBtnCancel[] = { 0x53d6, 0x6d88, 0 };
@@ -153,12 +157,21 @@ static int DoWoChatLogin(HINSTANCE hInstance)
 	return loginResult;
 }
 
+static const wchar_t txtWtDBError[] = 
+{ 0x65e0, 0x6cd5, 0x8bfb, 0x53d6, 0x0077, 0x0074, 0x002e, 0x0064, 0x0062, 0x6570, 0x636e, 0x5e93, 0x7684, 0x5bc6, 0x94a5, 0x6570, 0x636e, 0xff01, 0 };
 
 int DoWoChatLoginOrRegistration(HINSTANCE hInstance)
 {
-	U16 skCount = GetSecretKeyNumber();
+	U32 total = 0;
+	U32 status = GetSecretKeyNumber(&total);
 	
-	return skCount ? DoWoChatLogin(hInstance) : DoWoChatRegistration(hInstance);
+	if (WT_OK != status)
+	{
+		MessageBox(NULL, txtWtDBError, txtVeryBad, MB_OK);
+		return (int)status;
+	}
+
+	return total ? DoWoChatLogin(hInstance) : DoWoChatRegistration(hInstance);
 }
 
 
@@ -180,7 +193,7 @@ INT_PTR RCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			len = GetWindowTextW(hWndCtl, name, 64);
 			if (0 == len)
 			{
-				MessageBox(hWnd, txtNameEmpty, _T("Bad"), MB_OK);
+				MessageBox(hWnd, txtNameEmpty, txtVeryBad, MB_OK);
 				checkIsGood = 0;
 			}
 			else
@@ -191,14 +204,14 @@ INT_PTR RCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				len1 = GetWindowTextW(hWndCtl, pwd1, 64);
 				if (len0 == 0 && len1 == 0)
 				{
-					MessageBox(hWnd, txtPWDEmpty, _T("Bad"), MB_OK);
+					MessageBox(hWnd, txtPWDEmpty, txtVeryBad, MB_OK);
 					checkIsGood = 0;
 				}
 				else
 				{
 					if (len0 != len1)
 					{
-						MessageBox(hWnd, txtPWDIsNotSame, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtPWDIsNotSame, txtVeryBad, MB_OK);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
 						SetWindowTextW(hWndCtl, nullptr);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
@@ -207,7 +220,7 @@ INT_PTR RCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					else if (wmemcmp(pwd0, pwd1, len0))
 					{
-						MessageBox(hWnd, txtPWDIsNotSame, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtPWDIsNotSame, txtVeryBad, MB_OK);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
 						SetWindowTextW(hWndCtl, nullptr);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
@@ -221,7 +234,7 @@ INT_PTR RCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				U32 idxSk = 0xFFFFFFFF;
 				if (WT_OK == CreateNewAccount(name, len, pwd0, len0, &idxSk))
 				{
-					MessageBox(hWnd, txtCreateGood, _T("Good"), MB_OK);
+					MessageBox(hWnd, txtCreateGood, txtVeryGood, MB_OK);
 					if (WT_OK == OpenAccount(idxSk, (U16*)pwd0, (U32)len0))
 					{
 						loginResult = 0;
@@ -229,7 +242,7 @@ INT_PTR RCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					else
 					{
-						MessageBox(hWnd, txtCannotOpenSK, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtCannotOpenSK, txtVeryBad, MB_OK);
 					}
 				}
 			}
@@ -271,6 +284,9 @@ INT_PTR RegistrationDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 			hWndCtl = GetDlgItem(hWnd, IDB_CREATE);
 			if (hWndCtl)
 				SetWindowTextW(hWndCtl, (LPCWSTR)txtBtnRegistration);
+			hWndCtl = GetDlgItem(hWnd, IDB_IMPORT);
+			if (hWndCtl)
+				SetWindowTextW(hWndCtl, (LPCWSTR)txtImportData);
 			hWndCtl = GetDlgItem(hWnd, IDC_STATIC_NAME);
 			if (hWndCtl)
 				SetWindowTextW(hWndCtl, (LPCWSTR)txtStaticName);
@@ -319,7 +335,7 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					else
 					{
 						SetWindowTextW(hWndCtl, nullptr);
-						MessageBox(hWnd, txtCannotOpenSK, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtCannotOpenSK, txtVeryBad, MB_OK);
 					}
 				}
 			}
@@ -393,7 +409,7 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			len = GetWindowTextW(hWndCtl, name, 64);
 			if (0 == len)
 			{
-				MessageBox(hWnd, txtNameEmpty, _T("Bad"), MB_OK);
+				MessageBox(hWnd, txtNameEmpty, txtVeryBad, MB_OK);
 				checkIsGood = 0;
 			}
 			else
@@ -404,14 +420,14 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				len1 = GetWindowTextW(hWndCtl, pwd1, 64);
 				if (len0 == 0 && len1 == 0)
 				{
-					MessageBox(hWnd, txtPWDEmpty, _T("Bad"), MB_OK);
+					MessageBox(hWnd, txtPWDEmpty, txtVeryBad, MB_OK);
 					checkIsGood = 0;
 				}
 				else
 				{
 					if (len0 != len1)
 					{
-						MessageBox(hWnd, txtPWDIsNotSame, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtPWDIsNotSame, txtVeryBad, MB_OK);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
 						SetWindowTextW(hWndCtl, nullptr);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
@@ -420,7 +436,7 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					else if (wmemcmp(pwd0, pwd1, len0))
 					{
-						MessageBox(hWnd, txtPWDIsNotSame, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtPWDIsNotSame, txtVeryBad, MB_OK);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD0);
 						SetWindowTextW(hWndCtl, nullptr);
 						hWndCtl = GetDlgItem(hWnd, IDC_EDIT_PASSWORD1);
@@ -442,7 +458,7 @@ INT_PTR LCommandHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					}
 					else
 					{
-						MessageBox(hWnd, txtCannotOpenSK, _T("Bad"), MB_OK);
+						MessageBox(hWnd, txtCannotOpenSK, txtVeryBad, MB_OK);
 					}
 				}
 			}
@@ -464,21 +480,19 @@ static INT_PTR LoginDialogAddUserName(HWND hWnd)
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
 	int  rc, id;
-	wchar_t dbFile[MAX_PATH + 1] = { 0 };
 	U8* utf8;
 	size_t utf8len;
 	U32 utf16len, status, rowCount=0;
 	U16 utf16[256] = { 0 };
 
-	swprintf((wchar_t*)dbFile, MAX_PATH, L"%s\\wt.db", g_AppPath);
-
-	rc = sqlite3_open16(dbFile, &db);
+	rc = sqlite3_open16(g_DBPath, &db);
 	if (SQLITE_OK != rc)
 	{
 		sqlite3_close(db);
 		return WT_SQLITE_OPEN_ERR;
 	}
-	rc = sqlite3_prepare_v2(db, (const char*)"SELECT id, nm FROM k WHERE id>0 AND a='Y' ORDER BY id", -1, &stmt, NULL);
+
+	rc = sqlite3_prepare_v2(db, (const char*)"SELECT id, nm FROM k WHERE pt=0 AND at<>0 ORDER BY id", -1, &stmt, NULL);
 	if (SQLITE_OK == rc)
 	{
 		rc = sqlite3_step(stmt);
