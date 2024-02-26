@@ -315,7 +315,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_TITLE);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_TITLE);
 			lb->Init(((mode << 8) | id), "W3TITLE", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
 			m_ctlArray[mode][id] = lb;
@@ -329,7 +329,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -363,7 +363,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -378,7 +378,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -408,7 +408,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -438,7 +438,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -468,7 +468,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -498,7 +498,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);
@@ -528,7 +528,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W3NAME", g_pDWriteFactory, pTextFormat);
 			lb->setText(L"X", 1);

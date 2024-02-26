@@ -190,7 +190,7 @@ public:
 		assert(nullptr != m_pool);
 
 		IDWriteTextLayout* pTextLayout = nullptr;
-		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+		IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
 		HRESULT hr = g_pDWriteFactory->CreateTextLayout((wchar_t*)txtGeneralSetting, 4, pTextFormat, 600.f, 1.f, &pTextLayout);
 
 		if (S_OK == hr && pTextLayout)
@@ -329,8 +329,8 @@ public:
 	{
 #if 0
 		HRESULT hr;
-		IDWriteTextFormat* pTextFormat0 = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
-		IDWriteTextFormat* pTextFormat1 = GetTextFormat(WT_TEXTFORMAT_OTHER3);
+		IDWriteTextFormat* pTextFormat0 = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
+		IDWriteTextFormat* pTextFormat1 = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER3);
 		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
 		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
 		ID2D1SolidColorBrush* pBkgBrush0 = static_cast<ID2D1SolidColorBrush*>(brushBkg0);
@@ -388,7 +388,7 @@ public:
 	int DoSettingDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{
 		HRESULT hr;
-		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+		IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
 		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
 		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
 		ID2D1SolidColorBrush* pBkgBrush0 = static_cast<ID2D1SolidColorBrush*>(brushBkg0);
@@ -431,7 +431,7 @@ public:
 	int DoFriendDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{
 		HRESULT hr;
-		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_GROUPNAME);
+		IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_GROUPNAME);
 		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
 		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
 		ID2D1SolidColorBrush* pBkgBrush0 = static_cast<ID2D1SolidColorBrush*>(brushBkg0);

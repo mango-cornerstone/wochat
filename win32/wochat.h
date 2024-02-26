@@ -208,6 +208,6 @@ int GetSecretKey(U8* sk, U8* pk);
 
 U32 GetSecretKeyNumber(U32* total);
 
-IDWriteTextFormat* GetTextFormat(U8 idx);
+IDWriteTextFormat* GetTextFormatAndHeight(U8 idx, U16* height = nullptr);
 
 #endif // __WT_WOCHAT_H__

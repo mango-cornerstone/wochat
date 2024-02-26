@@ -354,7 +354,7 @@ public:
 		{
 			editbox = new(mem)XEditBox;
 			assert(nullptr != editbox);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
 			editbox->Init(((m_mode << 8) | id), "W5EDITINPUT", g_pDWriteFactory, pTextFormat);
 			editbox->setProperty(XCONTROL_PROP_RBUP);
 			m_ctlArray[0][id] = editbox;

@@ -94,7 +94,8 @@ MQTTSubData			g_SubData = { 0 };
 
 ID2D1Factory*		g_pD2DFactory = nullptr;
 IDWriteFactory*		g_pDWriteFactory = nullptr;
-IDWriteTextFormat*  g_pTextFormat[WT_TEXTFORMAT_TOTAL] = { 0 };
+IDWriteTextFormat*  ng_pTextFormat[WT_TEXTFORMAT_TOTAL] = { 0 };
+U16                 ng_fontHeight[WT_TEXTFORMAT_TOTAL] = { 0 };
 
 D2D1_DRAW_TEXT_OPTIONS d2dDrawTextOptions = D2D1_DRAW_TEXT_OPTIONS_NONE;
 
@@ -113,10 +114,17 @@ CAtlWinModule _Module;
 static HMODULE hDLLD2D{};
 static HMODULE hDLLDWrite{};
 
-IDWriteTextFormat* GetTextFormat(U8 idx)
+IDWriteTextFormat* GetTextFormatAndHeight(U8 idx, U16* height)
 {
 	if (idx < WT_TEXTFORMAT_TOTAL)
-		return g_pTextFormat[idx];
+	{
+		if (height)
+			*height = ng_fontHeight[idx];
+
+		ATLASSERT(ng_pTextFormat[idx]);
+
+		return ng_pTextFormat[idx];
+	}
 
 	return nullptr;
 }
@@ -1830,134 +1838,165 @@ static bool LoadD2D()
 
 static int InitDirectWriteTextFormat(HINSTANCE hInstance)
 {
+	int iRet = 0;
 	U8 idx;
 	HRESULT hr = S_OK;
-	
+	FLOAT fontSize;
+	WCHAR* fontFamilyName;
+	WCHAR const* ln = L"en-US"; // locale name
+	WCHAR* testString;
+	IDWriteTextLayout* pTextLayout = nullptr;
+	DWRITE_TEXT_METRICS tm;
+	wchar_t testStringChinese[] = { 0x85cf,0 };
+	wchar_t testStringEnglish[] = { 0x0058,0 };
+
 	ATLASSERT(g_pDWriteFactory);
 
 	for (U8 i = 0; i < WT_TEXTFORMAT_TOTAL; i++)
 	{
-		ReleaseUnknown(g_pTextFormat[i]);
+		ReleaseUnknown(ng_pTextFormat[i]);
+		ng_fontHeight[i] = 0;
 	}
 
-	idx = WT_TEXTFORMAT_MAINTEXT;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Microsoft Yahei",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		13.5f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_MAINTEXT; fontSize = 13.5f; fontFamilyName = L"Microsoft Yahei"; testString = testStringChinese;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName,NULL,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,fontSize,ln,&(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx]) 
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
-	idx = WT_TEXTFORMAT_TITLE;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Arial",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		11.5f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_TITLE; fontSize = 11.5f; fontFamilyName = L"Arial"; testString = testStringEnglish;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, ln, &(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx])
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
-	idx = WT_TEXTFORMAT_GROUPNAME;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Microsoft Yahei",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		17.f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_GROUPNAME; fontSize = 17.f; fontFamilyName = L"Microsoft Yahei"; testString = testStringChinese;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, ln, &(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx])
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
-	idx = WT_TEXTFORMAT_OTHER0;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Microsoft Yahei",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		21.f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_OTHER0; fontSize = 21.f; fontFamilyName = L"Microsoft Yahei"; testString = testStringChinese;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, ln, &(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx])
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
-	idx = WT_TEXTFORMAT_OTHER1;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Arial",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		18.f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_OTHER1; fontSize = 18.0f; fontFamilyName = L"Arial"; testString = testStringEnglish;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, ln, &(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx])
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
-	idx = WT_TEXTFORMAT_OTHER2;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Microsoft Yahei",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		16.f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_OTHER2; fontSize = 16.f; fontFamilyName = L"Microsoft Yahei"; testString = testStringChinese;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, ln, &(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx])
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
-	idx = WT_TEXTFORMAT_OTHER3;
-	hr = g_pDWriteFactory->CreateTextFormat(
-		L"Microsoft Yahei",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		11.f,
-		L"en-US",
-		&(g_pTextFormat[idx])
-	);
-
-	if (S_OK != hr || nullptr == g_pTextFormat[idx])
+	idx = WT_TEXTFORMAT_OTHER3; fontSize = 11.f; fontFamilyName = L"Microsoft Yahei"; testString = testStringChinese;
+	hr = g_pDWriteFactory->CreateTextFormat(fontFamilyName, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, ln, &(ng_pTextFormat[idx]));
+	if (S_OK == hr && nullptr != ng_pTextFormat[idx])
 	{
-		return (20 + idx);
+		// we determine the height of the text in this font by using a simple test string
+		hr = g_pDWriteFactory->CreateTextLayout(testString, 1, ng_pTextFormat[idx], 600.f, 1.f, &pTextLayout);
+		if (S_OK == hr && pTextLayout)
+		{
+			if (S_OK == pTextLayout->GetMetrics(&tm))
+			{
+				ng_fontHeight[idx] = static_cast<int>(tm.height) + 1;
+			}
+			else iRet = (int)(20 + idx);
+		}
+		else iRet = (int)(20 + idx);
+		ReleaseUnknown(pTextLayout);
 	}
+	else iRet = (int)(20 + idx);
+	if (iRet) return iRet;
 
 	return 0;
 }

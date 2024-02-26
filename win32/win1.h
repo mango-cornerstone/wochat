@@ -77,7 +77,7 @@ public:
 		{
 			XEditBoxLine* eb = new(mem)XEditBoxLine;
 			assert(nullptr != eb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
 			eb->Init(((mode <<8) | id), "W1EDITSEARCH", g_pDWriteFactory, pTextFormat);
 			eb->setRoundColor(m_backgroundColor, m_backgroundColor);
 			m_ctlArray[mode][id] = eb;
@@ -129,7 +129,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER0);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER0);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1NAME", g_pDWriteFactory, pTextFormat);
 			assert(g_myName);
@@ -161,7 +161,7 @@ public:
 			wchar_t hexPK[67] = { 0 };
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1PKValue", g_pDWriteFactory, pTextFormat);
 			assert(g_PK);
@@ -178,7 +178,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1PKValue", g_pDWriteFactory, pTextFormat);
 			lb->setText((wchar_t*)txtNoMotto, wcslen(txtNoMotto));
@@ -208,7 +208,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1PKValue", g_pDWriteFactory, pTextFormat);
 			assert(g_PK);
@@ -239,7 +239,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1PKValue", g_pDWriteFactory, pTextFormat);
 			assert(g_PK);
@@ -270,7 +270,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER1);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER1);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1PKValue", g_pDWriteFactory, pTextFormat);
 			assert(g_PK);
@@ -305,7 +305,7 @@ public:
 		{
 			XEditBoxLine* eb = new(mem)XEditBoxLine;
 			assert(nullptr != eb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
 			eb->Init(((mode << 8) | id), "W1EDITSEARCH", g_pDWriteFactory, pTextFormat);
 			eb->setRoundColor(m_backgroundColor, m_backgroundColor);
 			m_ctlArray[mode][id] = eb;
@@ -342,7 +342,7 @@ public:
 		{
 			XLabel* lb = new(mem)XLabel;
 			assert(nullptr != lb);
-			IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_OTHER2);
+			IDWriteTextFormat* pTextFormat = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER2);
 			assert(pTextFormat);
 			lb->Init(((mode << 8) | id), "W1PKValue", g_pDWriteFactory, pTextFormat);
 			lb->setText((wchar_t*)txtWin1TBD, wcslen(txtWin1TBD));
