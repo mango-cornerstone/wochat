@@ -231,6 +231,7 @@ Exit_InsertIntoGoodMsgTable:
 
 static U32 InsertIntoAbadonMsgTable(U8* txt, U32 len)
 {
+#if 0
 	U32 ret = WT_FAIL;
 	int rc;
 	sqlite3* db;
@@ -258,6 +259,8 @@ static U32 InsertIntoAbadonMsgTable(U8* txt, U32 len)
 	sqlite3_finalize(stmt);
 	sqlite3_close(db);
 	return ret;
+#endif 
+	return WT_OK;
 }
 
 static U32 InsertIntoSendMsgTable(U8* txt, U32 len, U8* hash, bool successful = true)
@@ -321,7 +324,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 	if (WT_OK != GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, Kp))
 		return 0;
 
-	if (node->type == 'T')
+	if (node->type == 'T') // this is a text message
 	{
 		U8 offset = 0;
 		U8* message_raw;
@@ -344,22 +347,18 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 		if (message_raw)
 		{
 			U8 idx;
-			U32 i, crcKs, crcHash;
+			U32 i, j;
 			wt_chacha20_context cxt = { 0 };
 			AES256_ctx ctxAES0 = { 0 };
 			AES256_ctx ctxAES1 = { 0 };
 			U8 hash[32] = { 0 };
 			U8 Ks[32] = { 0 };
-			
+			U8 mask[8] = { 0 };
 			U8 nonce[12] = { 0 };
-		
-			wt_sha256_hash(task->message, task->msgLen, hash); // generate the SHA256 hash of the original message
-			wt_GenerateNewSecretKey(Ks); // genarate the session key
+			U8* q;
 
-			// generate the CRC value of the session key
-			INIT_CRC32C(crcKs);
-			COMP_CRC32C(crcKs, Ks, 32);
-			FIN_CRC32C(crcKs);  
+			wt_sha256_hash(task->message, task->msgLen, hash); // generate the SHA256 hash of the original message
+			wt_GenerateNewSecretKey(Ks); // genarate the session key, it is a randome number
 
 			U8* p = message_raw;
 
@@ -371,10 +370,12 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			wt_AES256_init(&ctxAES1, Kp);
 			wt_AES256_encrypt(&ctxAES1, 2, p+32, hash); 
 
-			// generate the CRC value of the encrypted SHA256
-			INIT_CRC32C(crcHash);
-			COMP_CRC32C(crcHash, p+32, 32);
-			FIN_CRC32C(crcHash);  
+			// generate the mask value of the encrypted SHA256
+			for (i = 0; i < 4; i++)
+			{
+				q = p + 32 + i * 8;
+				for (j = 0; j < 8; j++) mask[i] ^= q[i];
+			}
 
 			// handle the next 4 bytes
 			p[64] = WT_ENCRYPTION_VERION; // the version byte
@@ -382,17 +383,13 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			idx = wt_GenRandomU8(offset); // a random offset
 			p[66] = idx;
 			p[67] = 'X'; // reserved byte
-
 			// save the original message length in the next 4 bytes
 			U32* p32 = (U32*)(p + 68);
 			*p32 = task->msgLen;
 
 			// mask the 8 bytes to make it a little bit harder for the attacker :-)
-			U8* q = (U8*)&crcHash;
-			for (i = 0; i < 4; i++) p[64 + i] ^= q[i];
-
-			q = (U8*)&crcKs;
-			for (i = 0; i < 4; i++) p[68 + i] ^= q[i];
+			q = p + 64;
+			for (i = 0; i < 8; i++) q[i] ^= mask[i];
 
 			if (offset) // the original message is less than 252 bytes, we fill the random data in the 252 bytes
 				wt_FillRandomData(p + 72, length_raw - 72);
@@ -408,7 +405,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			wt_chacha20_update(&cxt, length_raw - 32, (const unsigned char*)(p+32), p + 32);  
 			wt_chacha20_free(&cxt);
 
-			// we complete the raw message, so conver the raw message to base64 encoding string, and with a zero at the end
+			// we complete the raw message, so conver the raw message to base64 encoding string
 			length_b64 = wt_b64_enc_len(length_raw);
 			msssage_b64 = (U8*)wt_palloc(pool, 89 + length_b64); 
 			if (msssage_b64)
@@ -419,7 +416,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 				wt_b64_encode((const char*)g_PK, 33, (char*)p, 44);
 				// the second 44 bytes are the public key of the receiver
 				wt_b64_encode((const char*)node->pubkey, 33, (char*)(p+44), 44);
-				
+			
 				p[88] = '|';  // this is the seperator character to indicate the message type
 
 				// convert the raw message to base64 encoding string
@@ -446,6 +443,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 
 	if (node->type == 'C') // confirmation message
 	{
+#if 0
 		length_b64 = 44 + 44 + 1 + 44 + 1; // zero terminated
 		msssage_b64 = (U8*)wt_palloc(pool, length_b64); 
 		if (msssage_b64)
@@ -497,6 +495,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			}
 			wt_pfree(msssage_b64);
 		}
+#endif 
 	}
 
 	return 0;
@@ -723,9 +722,6 @@ extern "C"
 		if (msssage_b64[88] != '|' && msssage_b64[88] != '#') // the 88th bytes is spearated character
 			return;
 
-		if (0 == msssage_b64[length_b64 - 1]) // the last byte maybe zero 
-			length_b64--;
-
 		rc = wt_b64_decode((const char*)msssage_b64, 44, (char*)pkSender, 33);
 		if (rc != 33)
 			return;
@@ -740,30 +736,29 @@ extern "C"
 
 		if (msssage_b64[88] == '|') // this is a common message packet
 		{
-#if 0
 			int rc;
-			U8* q;
 			U8* message_raw;
 			U32 length_raw;
 
-			q = msssage_b64;
 			length_raw = wt_b64_dec_len(length_b64 - 89);
 			message_raw = (U8*)wt_palloc(pool, length_raw);
 			if (message_raw)
 			{
 				U8 type, version, offset, reserved;
-				U32 i, length, crcKs, crcHash;
+				U32 i, j, length;
 				U8 Ks[32] = { 0 };
 				U8 nonce[12] = { 0 };
 				U8 hash[32] = { 0 };
 				U8 hash_org[32] = { 0 };
+				U8 mask[8] = { 0 };
+				U8* q;
 
 				wt_chacha20_context cxt = { 0 };
 				AES256_ctx ctxAES0 = { 0 };
 				AES256_ctx ctxAES1 = { 0 };
 
 				U8* p = message_raw;
-				rc = wt_b64_decode((const char*)(q + 89), length_b64 - 89, (char*)p, length_raw);
+				rc = wt_b64_decode((const char*)(msssage_b64 + 89), length_b64 - 89, (char*)message_raw, length_raw);
 				if (rc < 0)
 				{
 					wt_pfree(message_raw);
@@ -772,10 +767,7 @@ extern "C"
 				}
 
 				wt_AES256_init(&ctxAES0, Kp);
-				wt_AES256_decrypt(&ctxAES0, 2, Ks, p);
-				INIT_CRC32C(crcKs);
-				COMP_CRC32C(crcKs, Ks, 32);
-				FIN_CRC32C(crcKs);  // generate the CRC value of the session key
+				wt_AES256_decrypt(&ctxAES0, 2, Ks, p); // get the session key at first
 
 				wt_chacha20_init(&cxt);
 				wt_chacha20_setkey(&cxt, Ks);
@@ -784,18 +776,17 @@ extern "C"
 				wt_chacha20_update(&cxt, length_raw - 32, (const unsigned char*)(p+32), p+32);  // decrypt the message!
 				wt_chacha20_free(&cxt);
 
-				INIT_CRC32C(crcHash);
-				COMP_CRC32C(crcHash, p+32, 32);
-				FIN_CRC32C(crcHash);  // generate the CRC value of the encrypted SHA256
+				for (i = 0; i < 4; i++)
+				{
+					q = p + 32 + i * 8;
+					for (j = 0; j < 8; j++) mask[i] ^= q[i];
+				}
 
 				wt_AES256_init(&ctxAES1, Kp);
 				wt_AES256_decrypt(&ctxAES1, 2, hash, p+32);
 
-				q = (U8*)&crcHash;
-				for (i = 0; i < 4; i++) p[64 + i] ^= q[i]; 
-
-				q = (U8*)&crcKs;
-				for (i = 0; i < 4; i++) p[68 + i] ^= q[i];
+				q = p + 64;
+				for (i = 0; i < 8; i++) q[i] ^= mask[i];
 
 				version  = p[64];
 				type     = p[65];
@@ -809,7 +800,7 @@ extern "C"
 				if (0 == memcmp(hash, hash_org, 32)) // check the hash value is the same
 				{
 					InsertIntoGoodMsgTable(msssage_b64, length_b64, hash);
-
+#if 0
 					MessageTask* task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
 					if (task)
 					{
@@ -827,15 +818,13 @@ extern "C"
 						else
 							wt_pfree(task);
 					}
+#endif
 				}
 				else
 					InsertIntoAbadonMsgTable(msssage_b64, length_b64);
-
 				wt_pfree(message_raw);
 			}
-			else
-				InsertIntoAbadonMsgTable(msssage_b64, length_b64);
-#endif
+			else InsertIntoAbadonMsgTable(msssage_b64, length_b64);
 		}
 
 		if (msssage_b64[88] == '#') // this is a common message packet
