@@ -40,10 +40,27 @@ typedef unsigned long long int uint64;
  */
 typedef size_t Size;
 
+#define WT_ENCRYPTION_VERION		1
+
+/* for Secp256k1 key size */
+#define SECRET_KEY_SIZE		32
+#define PUBLIC_KEY_SIZE		33
+
+/* MQTT client is has maximum 23 bytes */
+#define MQTT_CLIENTID_SIZE	23
+
+#define MQTT_DEFAULT_HOST	("www.boobooke.com")
+//#define MQTT_DEFAULT_HOST	("broker.hivemq.com")
+#define MQTT_DEFAULT_PORT	1883
+
+/* sha256 hash values always is 256-bit/32-byte long */
+#define SHA256_HASH_SIZE	32
+
 typedef struct WTFriend
 {
 	struct WTFriend* next;
 	U8 pubkey[33];
+	U16  member;	// if this friend is group, how many members in this group?
 	U16* name;		// the name of this friend
 	U8   nameLen;
 	U32* iconSmall;
@@ -81,10 +98,8 @@ typedef struct WTChatGroup
 	WTFriend* people;
 	U16  width;		    // in pixel, the width of window 4
 	U16  height;		// in pixel
-
 	U32  total;         // total messages in this group
 	U32  unread;		// how many unread messages? if more than 254, use ... 
-	U16  member;		// how many members in this group?
 	U64  ts;			// the time stamp of last message. 
 	U16* tsText;	    // the text of time stamp
 	U16* lastmsg;	    // the last message of this group
@@ -126,7 +141,6 @@ typedef struct WTSetting
 #define WT_DYNAMIC_HASHTAB_ERR	0x0000000E
 #define WT_SECP256K1_CTX_ERROR  0x0000000F
 #define WT_RANDOM_NUMBER_ERROR  0x00000010
-
 
 #define WT_PARAM_APPLICATION_NAME			0
 #define WT_PARAM_SERVER_NAME				1

@@ -59,7 +59,6 @@ LONG				g_Quit = 0;
 LONG                g_NetworkStatus = 0;
 DWORD               g_dwMainThreadID  = 0;
 
-U32  				g_messageSequence = 0;
 HTAB*				g_messageHTAB = nullptr;
 HTAB*               g_keyHTAB = nullptr;
 MemoryPoolContext   g_messageMemPool = nullptr;
@@ -85,9 +84,9 @@ HWND				g_hWndChatHistory = nullptr;
 HWND				g_hWndAudioCall = nullptr;
 HWND				g_hWndSearchAll = nullptr;
 
-
-CRITICAL_SECTION    g_csMQTTSub;
-CRITICAL_SECTION    g_csMQTTPub;
+CRITICAL_SECTION    g_csMQTTSubUI;
+CRITICAL_SECTION    g_csMQTTPubUI;
+CRITICAL_SECTION    g_csMQTTPubSub;
 
 MQTTPubData			g_PubData = { 0 };
 MQTTSubData			g_SubData = { 0 };
@@ -354,7 +353,7 @@ public:
 	{
 		DWORD dwThreadID;
 		HANDLE hThread = nullptr;
-		XChatGroup* cg;
+		WTChatGroup* cg;
 		m_loadingPercent = 0;
 
 		hThread = ::CreateThread(NULL, 0, LoadingDataThread, m_hWnd, 0, &dwThreadID);
@@ -364,7 +363,6 @@ public:
 			PostMessage(WM_CLOSE, 0, 0);
 			return 0;
 		}
-
 		cg = m_win2.GetSelectedChatGroup();
 		if (cg)
 		{
@@ -526,7 +524,7 @@ public:
 			MQTTSubData* pd = &g_SubData;
 			MessageTask* p;
 
-			EnterCriticalSection(&g_csMQTTSub);
+			EnterCriticalSection(&g_csMQTTSubUI);
 			p = pd->task;
 			while (p) // scan the link to find the message that has been processed
 			{
@@ -550,7 +548,7 @@ public:
 				ret += rc;
 				p = p->next;
 			}
-			LeaveCriticalSection(&g_csMQTTSub);
+			LeaveCriticalSection(&g_csMQTTSubUI);
 
 			if (ret)
 				Invalidate();
@@ -1037,11 +1035,9 @@ public:
 		case WIN4_UPDATE_MESSAGE:
 			{
 				MessageTask* mt = (MessageTask*)lParam;
-				if (mt)
-				{
-					if (m_win4.UpdateMyMessage(mt))
-						Invalidate();
-				}
+				ATLASSERT(mt);
+				if (m_win4.UpdateMyMessage(mt))
+					Invalidate();
 			}
 			break;
 		default:
@@ -2056,26 +2052,16 @@ static U32 MemoryContextInit()
 	g_topMemPool = wt_mempool_create("TopMemoryContext", 0, DUI_ALLOCSET_SMALL_INITSIZE, DUI_ALLOCSET_SMALL_MAXSIZE);
 	if (g_topMemPool)
 	{
-		g_SK   = (U8*)wt_palloc0(g_topMemPool, 32);
-		g_PK   = (U8*)wt_palloc0(g_topMemPool, 33);
-		g_pkAI = (U8*)wt_palloc0(g_topMemPool, 33);
-		g_MQTTPubClientId = (U8*)wt_palloc0(g_topMemPool, 23);
-		g_MQTTSubClientId = (U8*)wt_palloc0(g_topMemPool, 23);
+		g_SK   = (U8*)wt_palloc0(g_topMemPool, SECRET_KEY_SIZE);
+		g_PK   = (U8*)wt_palloc0(g_topMemPool, PUBLIC_KEY_SIZE);
+		g_pkAI = (U8*)wt_palloc0(g_topMemPool, PUBLIC_KEY_SIZE);
+		g_MQTTPubClientId = (U8*)wt_palloc0(g_topMemPool, MQTT_CLIENTID_SIZE);
+		g_MQTTSubClientId = (U8*)wt_palloc0(g_topMemPool, MQTT_CLIENTID_SIZE);
 
 		if (g_SK && g_PK && g_pkAI && g_MQTTPubClientId && g_MQTTSubClientId)
 		{
 			wt_HexString2Raw((U8*)default_pkAI, 66, g_pkAI, nullptr);
 			ret = WT_OK;
-#if 0
-			U8 hash[32] = { 0 };
-			wt_HexString2Raw((U8*)default_private_key, 64, g_SK, nullptr);
-			wt_HexString2Raw((U8*)default_public_key, 66, g_pkAI, nullptr);
-			ret = GenPublicKeyFromSecretKey(g_SK, g_PK);
-
-			wt_sha256_hash(g_SK, 32, hash);
-			wt_Raw2HexString(hash, 11, g_MQTTPubClientId, nullptr); // The MQTT client Id is 23 bytes long
-			wt_Raw2HexString(hash+16, 11, g_MQTTSubClientId, nullptr); // The MQTT client Id is 23 bytes long
-#endif 
 		}
 	}
 
@@ -2085,7 +2071,7 @@ static U32 MemoryContextInit()
 
 	{
 		HASHCTL hctl = { 0 };
-		hctl.keysize = 32; // the SHA256 is 32 bytes
+		hctl.keysize = SHA256_HASH_SIZE; // the SHA256 is 32 bytes
 		hctl.entrysize = hctl.keysize + sizeof(void*);
 		g_messageHTAB = hash_create("MainMessageHTAB", 256, &hctl, HASH_ELEM | HASH_BLOBS);
 		if (!g_messageHTAB)
@@ -2186,8 +2172,9 @@ static int InitInstance(HINSTANCE hInstance)
 		return 2;
 	}
 
-	InitializeCriticalSection(&g_csMQTTSub);
-	InitializeCriticalSection(&g_csMQTTPub);
+	InitializeCriticalSection(&g_csMQTTSubUI);
+	InitializeCriticalSection(&g_csMQTTPubUI);
+	InitializeCriticalSection(&g_csMQTTPubSub);
 
 	g_hCursorWE = ::LoadCursor(NULL, IDC_SIZEWE);
 	g_hCursorNS = ::LoadCursor(NULL, IDC_SIZENS);
@@ -2224,8 +2211,6 @@ static int InitInstance(HINSTANCE hInstance)
 	g_SubData.host = MQTT_DEFAULT_HOST;
 	g_SubData.port = MQTT_DEFAULT_PORT;
 
-	g_messageSequence = wt_GenRandomU32(0x7FFFFFFF);
-
 	return 0;
 }
 
@@ -2261,8 +2246,9 @@ static void ExitInstance(HINSTANCE hInstance)
 	}
 
 	CloseHandle(g_MQTTPubEvent);
-	DeleteCriticalSection(&g_csMQTTSub);
-	DeleteCriticalSection(&g_csMQTTPub);
+	DeleteCriticalSection(&g_csMQTTSubUI);
+	DeleteCriticalSection(&g_csMQTTPubUI);
+	DeleteCriticalSection(&g_csMQTTPubSub);
 
 	MQTT::MQTT_Term();
 	MemoryContextTerm();

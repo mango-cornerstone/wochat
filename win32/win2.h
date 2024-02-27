@@ -28,7 +28,7 @@ private:
 
 	enum {
 		ITEM_HEIGHT = 64,
-		ICON_HEIGHT = 40,
+		ICON_HEIGHT = 32,
 		ICON_HEIGHTF = 32,
 		ITEM_MARGIN = ((ITEM_HEIGHT - ICON_HEIGHT) >> 1),
 		ITEM_MARGINF = ((ITEM_HEIGHT - ICON_HEIGHTF) >> 1)
@@ -37,23 +37,23 @@ private:
 	int		m_lineHeight0 = 0;
 	int		m_lineHeight1 = 0;
 
-	XChatGroup* m_chatgroupRoot = nullptr;
-	XChatGroup* m_chatgroupSelected = nullptr;
-	XChatGroup* m_chatgroupSelectPrev = nullptr;
-	XChatGroup* m_chatgroupHovered = nullptr;
+	WTChatGroup* m_chatgroupRoot = nullptr;
+	WTChatGroup* m_chatgroupSelected = nullptr;
+	WTChatGroup* m_chatgroupSelectPrev = nullptr;
+	WTChatGroup* m_chatgroupHovered = nullptr;
 	int m_chatgroupTotal = 0;
-
-	WTSetting* m_settingRoot = nullptr;
-	WTSetting* m_settingSelected = nullptr;
-	WTSetting* m_settingSelectPrev = nullptr;
-	WTSetting* m_settingHovered = nullptr;
-	int m_settingTotal = 0;
 
 	WTFriend* m_friendRoot = nullptr;
 	WTFriend* m_friendSelected = nullptr;
 	WTFriend* m_friendSelectPrev = nullptr;
 	WTFriend* m_friendHovered = nullptr;
 	int m_friendTotal = 0;
+
+	WTSetting* m_settingRoot = nullptr;
+	WTSetting* m_settingSelected = nullptr;
+	WTSetting* m_settingSelectPrev = nullptr;
+	WTSetting* m_settingHovered = nullptr;
+	int m_settingTotal = 0;
 
 	void InitBitmap()
 	{
@@ -68,7 +68,7 @@ public:
 	}
 	~XWindow2() {}
 
-	XChatGroup* GetSelectedChatGroup()
+	WTChatGroup* GetSelectedChatGroup()
 	{
 		return m_chatgroupSelected;
 	}
@@ -97,6 +97,7 @@ public:
 		assert(nullptr == m_friendRoot);
 		assert(nullptr != m_pool);
 
+		m_friendSelected = nullptr;
 		m_friendTotal = 0;
 		m_friendRoot = (WTFriend*)wt_palloc0(m_pool, sizeof(WTFriend));
 		if(m_friendRoot)
@@ -144,7 +145,8 @@ public:
 							m_friendRoot->name[utf16len] = L'\0';
 
 							m_friendTotal++;
-							m_friendSelected = m_friendRoot;
+							if(0 == memcmp(m_friendRoot->pubkey, g_pkAI, PUBLIC_KEY_SIZE))
+								m_friendSelected = m_friendRoot;
 							if (bytes32 == MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32))
 							{
 								m_friendRoot->iconSmall = (U32*)wt_palloc0(m_pool, bytes32);
@@ -235,62 +237,23 @@ public:
 					p = q;
 				}
 			}
-
-
-
 		}
 		return WT_OK;
 	}
 
 	int LoadChatGroupList()
 	{
-#if 0
-		int i, total = 0;
-		assert(nullptr == m_chatgroupRoot);
-		assert(nullptr != m_pool);
-
-		m_sizeAll.cy = 0;
-		m_sizeLine.cy = 0;
-
-		m_chatgroupRoot = (XChatGroup*)wt_palloc0(m_pool, sizeof(XChatGroup));
-		if (nullptr != m_chatgroupRoot)
+		if (m_friendSelected)
 		{
-			XChatGroup* p;
-			XChatGroup* q;
-			p = m_chatgroupRoot;
-			p->mempool = wt_mempool_create("CHATGROUP", 0, DUI_ALLOCSET_DEFAULT_INITSIZE, DUI_ALLOCSET_DEFAULT_MAXSIZE);
-			if (nullptr != p->mempool)
+			m_chatgroupRoot = (WTChatGroup*)wt_palloc0(m_pool, sizeof(WTChatGroup));
+			if (nullptr != m_chatgroupRoot)
 			{
+				WTChatGroup* p;
 				m_chatgroupSelected = m_chatgroupRoot;
-				for (int i = 0; i < 33; i++)
-				{
-					p->pubkey[i] = g_pkAI[i];
-				}
-
-				p->icon = (U32*)xbmpChatGPT;
-				p->name = (wchar_t*)AIGroupName;
-				p->nameLen = 7;
-				p->lastmsg = (wchar_t*)Win2LastMSG;
-				p->lastmsgLen = 16;
-
-				p->w = ICON_HEIGHT;
-				p->h = ICON_HEIGHT;
-				p->height = ITEM_HEIGHT;
-				p->width = 0;
-				p->tsText = nullptr;
-				p->next = nullptr;
-			}
-			else
-			{
-				wt_pfree(m_chatgroupRoot);
-				m_chatgroupRoot = nullptr;
-				return 1;
+				p = m_chatgroupRoot;
+				p->people = m_friendSelected;
 			}
 		}
-
-		m_sizeAll.cy = ITEM_HEIGHT;
-		m_sizeLine.cy = ITEM_HEIGHT / 3;
-#endif
 		return 0;
 	}
 
@@ -300,26 +263,12 @@ public:
 
 		LoadFriends();
 		InitSettings();
-
-#if 0
 		ret = LoadChatGroupList();
-#endif 
 		return ret;
 	}
 
 	int Do_DUI_DESTROY(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
 	{
-#if 0
-		XChatGroup* p = m_chatgroupRoot;
-
-		while (nullptr != p)
-		{
-			assert(nullptr != p->mempool);
-			wt_mempool_destroy(p->mempool);
-			p->mempool = nullptr;
-			p = p->next;
-		}
-#endif 
 		return 0;
 	}
 
@@ -327,7 +276,6 @@ public:
 public:
 	int DoTalkDrawText(DUI_Surface surface, DUI_Brush brushText, DUI_Brush brushSelText, DUI_Brush brushCaret, DUI_Brush brushBkg0, DUI_Brush brushBkg1)
 	{
-#if 0
 		HRESULT hr;
 		IDWriteTextFormat* pTextFormat0 = GetTextFormatAndHeight(WT_TEXTFORMAT_MAINTEXT);
 		IDWriteTextFormat* pTextFormat1 = GetTextFormatAndHeight(WT_TEXTFORMAT_OTHER3);
@@ -346,20 +294,21 @@ public:
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		int margin = (DUI_STATUS_VSCROLL & m_status) ? m_scrollWidth : 0;
-		int W = DUI_ALIGN_DEFAULT32(w - ITEM_MARGIN - ITEM_MARGIN - ICON_HEIGHT - margin - 4);
-		int H = ITEM_HEIGHT;
 		D2D1_POINT_2F orgin;
 		dx = ITEM_MARGIN;
 
-		XChatGroup* p = m_chatgroupRoot;
+		WTChatGroup* p = m_chatgroupRoot;
 		pos = 0;
 		while (nullptr != p)
 		{
 			if (pos + ITEM_HEIGHT > m_ptOffset.y)
 			{
+				WTFriend* people = p->people;
+				assert(people);
+
 				dx = ITEM_MARGIN + ICON_HEIGHT + ITEM_MARGIN;
 				dy = pos - m_ptOffset.y + ITEM_MARGIN;
-				hr = g_pDWriteFactory->CreateTextLayout(p->name, p->nameLen, pTextFormat0, static_cast<FLOAT>(W), static_cast<FLOAT>(1), &pTextLayout0);
+				hr = g_pDWriteFactory->CreateTextLayout((wchar_t*)people->name, people->nameLen, pTextFormat0, static_cast<FLOAT>(w), static_cast<FLOAT>(1), &pTextLayout0);
 				if (S_OK == hr)
 				{
 					orgin.x = static_cast<FLOAT>(dx + m_area.left);
@@ -367,6 +316,7 @@ public:
 					pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout0, pTextBrush);
 				}
 				SafeRelease(&pTextLayout0);
+#if 0
 				hr = g_pDWriteFactory->CreateTextLayout(p->lastmsg, p->lastmsgLen, pTextFormat1, static_cast<FLOAT>(W), static_cast<FLOAT>(1), &pTextLayout1);
 				if (S_OK == hr)
 				{
@@ -375,13 +325,13 @@ public:
 					pD2DRenderTarget->DrawTextLayout(orgin, pTextLayout1, pTextBrush);
 				}
 				SafeRelease(&pTextLayout1);
+#endif
 			}
 			p = p->next;
 			pos += ITEM_HEIGHT;
 			if (pos >= (m_ptOffset.y + h))
 				break;
 		}
-#endif 
 		return 0;
 	}
 
@@ -496,44 +446,37 @@ public:
 
 	int TalkPaint(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
 	{
-#if 0
 		U32 color;
 		int dx, dy, pos;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		int margin = (DUI_STATUS_VSCROLL & m_status) ? m_scrollWidth : 0;
-		int W = DUI_ALIGN_DEFAULT32(w - ITEM_MARGIN - ITEM_MARGIN - ICON_HEIGHT - margin - 4);
-		int H = ITEM_HEIGHT;
-
+		WTFriend* people;
 		dx = ITEM_MARGIN;
-		XChatGroup* p = m_chatgroupRoot;
+		WTChatGroup* p = m_chatgroupRoot;
 		pos = 0;
 		while (nullptr != p)
 		{
 			if (pos + ITEM_HEIGHT > m_ptOffset.y)
 			{
+				people = p->people;
+				assert(people);
+
 				if (p == m_chatgroupSelected)
-				{
 					color = SELECTED_COLOR;
-				}
 				else if (p == m_chatgroupHovered)
-				{
 					color = HOVERED_COLOR;
-				}
 				else
-				{
 					color = DEFAULT_COLOR;
-				}
 				dy = pos - m_ptOffset.y;
 				DUI_ScreenFillRect(m_screen, w, h, color, w - margin, ITEM_HEIGHT, 0, dy);
-				DUI_ScreenDrawRectRound(m_screen, w, h, p->icon, p->w, p->h, dx, dy + ITEM_MARGIN, color, color);
+				DUI_ScreenDrawRectRound(m_screen, w, h, people->iconSmall, people->wSmall,people->hSmall, dx, dy + ITEM_MARGIN, color, color);
 			}
 			p = p->next;
 			pos += ITEM_HEIGHT;
 			if (pos >= (m_ptOffset.y + h))
 				break;
 		}
-#endif 
 		return 0;
 	}
 

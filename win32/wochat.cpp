@@ -12,19 +12,25 @@
 #define WT_NETWORK_IS_BAD		0
 #define WT_NETWORK_IS_GOOD		1
 
+U32 ng_seqnumber = 0;
+
 typedef struct PublishTask
 {
 	PublishTask* next;
 	MessageTask* node;
+	U8* message; 
+	U32 msgLen;
 } PublishTask;
 
 static PublishTask* CloneInputMessageTasks(MemoryPoolContext mempool)
 {
 	PublishTask* pt = nullptr;
 	
-	EnterCriticalSection(&g_csMQTTPub);
+	EnterCriticalSection(&g_csMQTTPubUI);
 	if (g_PubData.task)
 	{
+		U32 ret, len, len0;
+		U32* p32;
 		bool firstTime = true;
 		MessageTask* p;
 		PublishTask* item;
@@ -39,6 +45,35 @@ static PublishTask* CloneInputMessageTasks(MemoryPoolContext mempool)
 				if (item)
 				{
 					item->node = p;
+					if (p->type == 'T') // it is UTF16 encoding, we convert to UTF8 encoding
+					{
+						len0 = p->msgLen / sizeof(wchar_t);
+						ret = wt_UTF16ToUTF8((U16*)p->message, len0, nullptr, &len);
+						if (WT_OK != ret)
+						{
+							wt_pfree(item);
+							continue;
+						}
+						item->message = (U8*)wt_palloc(mempool, len + 4);
+						if (item->message == nullptr)
+						{
+							wt_pfree(item);
+							continue;
+						}
+						
+						p32 = (U32*)item->message;
+						*p32 = ng_seqnumber;
+
+						ret = wt_UTF16ToUTF8((U16*)p->message, len0, item->message + 4, nullptr);
+						if (WT_OK != ret)
+						{
+							wt_pfree(item->message);
+							wt_pfree(item);
+							continue;
+						}
+						item->msgLen = len + 4;
+					}
+
 					if (firstTime)
 					{
 						firstTime = false;
@@ -56,7 +91,7 @@ static PublishTask* CloneInputMessageTasks(MemoryPoolContext mempool)
 			p = p->next;
 		}
 	}
-	LeaveCriticalSection(&g_csMQTTPub);
+	LeaveCriticalSection(&g_csMQTTPubUI);
 
 	return pt;
 }
@@ -67,7 +102,7 @@ static int PushTaskIntoReceiveMessageQueue(MessageTask* task)
 	MQTTSubData* pd = &g_SubData;
 	MessageTask* p;
 
-	EnterCriticalSection(&g_csMQTTSub);
+	EnterCriticalSection(&g_csMQTTSubUI);
 
 	while (pd->task) // scan the link to find the message that has been processed
 	{
@@ -84,7 +119,7 @@ static int PushTaskIntoReceiveMessageQueue(MessageTask* task)
 	if (nullptr == pd->task) // there is no task in the queue
 	{
 		pd->task = task;
-		LeaveCriticalSection(&g_csMQTTSub);
+		LeaveCriticalSection(&g_csMQTTSubUI);
 		return 0;
 	}
 
@@ -95,38 +130,46 @@ static int PushTaskIntoReceiveMessageQueue(MessageTask* task)
 	p->next = task;
 	task->next = nullptr;
 
-	LeaveCriticalSection(&g_csMQTTSub);
+	LeaveCriticalSection(&g_csMQTTSubUI);
 
 	return 0;
 }
 
-static int GetKeyFromSecretKeyAndPlubicKey(U8* sk, U8* pk, U8* key)
+static U32 GetKeyFromSecretKeyAndPlubicKey(U8* sk, U8* pk, U8* key)
 {
-	int ret = 1;
+	U32 ret = WT_FAIL;
 	secp256k1_context* ctx;
-	secp256k1_pubkey pubkey;
-	U8 K[32] = { 0 };
+
+	assert(sk);
+	assert(pk);
+	assert(key);
 
 	ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
 	if (ctx)
 	{
-		ret = secp256k1_ec_pubkey_parse(ctx, &pubkey, pk, 33);
-		if (1 != ret)
+		int rc;
+		secp256k1_pubkey pubkey;
+		U8 k[SECRET_KEY_SIZE] = { 0 };
+
+		rc = secp256k1_ec_pubkey_parse(ctx, &pubkey, pk, PUBLIC_KEY_SIZE);
+		if (1 != rc)
 		{
 			secp256k1_context_destroy(ctx);
-			ret = 1;
-			return ret;
+			return WT_SECP256K1_CTX_ERROR;
 		}
-		ret = secp256k1_ecdh(ctx, K, &pubkey, sk, NULL, NULL);
-		if (ret && key)
+		rc = secp256k1_ecdh(ctx, k, &pubkey, sk, NULL, NULL);
+		if (1 == rc)
 		{
-			for (int i = 0; i < 32; i++)
-				key[i] = K[i];
+			for (int i = 0; i < SECRET_KEY_SIZE; i++)
+			{
+				key[i] = k[i];
+				k[i] = 0;
+			}
+			ret = WT_OK;
 		}
-
 		secp256k1_context_destroy(ctx);
-		ret = 0;
 	}
+
 	return ret;
 }
 
@@ -219,6 +262,7 @@ static U32 InsertIntoAbadonMsgTable(U8* txt, U32 len)
 
 static U32 InsertIntoSendMsgTable(U8* txt, U32 len, U8* hash, bool successful = true)
 {
+#if 0
 	U32 ret = WT_FAIL;
 	int rc;
 	sqlite3* db;
@@ -257,13 +301,15 @@ static U32 InsertIntoSendMsgTable(U8* txt, U32 len, U8* hash, bool successful = 
 	sqlite3_finalize(stmt);
 	sqlite3_close(db);
 	return ret;
+#endif
+	return WT_OK;
 }
 
 static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, PublishTask* task)
 {
 	assert(task);
 	MessageTask* node = task->node;
-	U8 Kp[32] = { 0 };
+	U8 Kp[SECRET_KEY_SIZE] = { 0 };
 	U8 topic[67] = { 0 };
 	U8* msssage_b64;
 	U32 length_b64;
@@ -272,7 +318,8 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 		return 0;
 
 	// get the primary key between the sender and the receiver
-	GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, Kp);
+	if (WT_OK != GetKeyFromSecretKeyAndPlubicKey(g_SK, node->pubkey, Kp))
+		return 0;
 
 	if (node->type == 'T')
 	{
@@ -280,15 +327,17 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 		U8* message_raw;
 		U32 length_raw;
 
-		if (node->msgLen < 252) // we keep the minimal size to 252 bytes to make it harder for the attacker
+		assert(task->message);
+
+		if (task->msgLen < 252) // we keep the minimal size to 252 bytes to make it harder for the attacker
 		{
 			length_raw = 252 + 72;
-			offset = (U8)(252 - node->msgLen);
+			offset = (U8)(252 - task->msgLen);
 		}
 		else
 		{
 			offset = 0;
-			length_raw = node->msgLen + 72; // if the message is equal or more than 252 bytes, we do not make random data
+			length_raw = task->msgLen + 72; // if the message is equal or more than 252 bytes, we do not make random data
 		}
 
 		message_raw = (U8*)wt_palloc(pool, length_raw);
@@ -304,8 +353,8 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 			
 			U8 nonce[12] = { 0 };
 		
-			wt_sha256_hash(node->message, node->msgLen, hash); // generate the SHA256 hash of the original message
-			wt_FillRandomData(Ks, 32); // genarate the session key
+			wt_sha256_hash(task->message, task->msgLen, hash); // generate the SHA256 hash of the original message
+			wt_GenerateNewSecretKey(Ks); // genarate the session key
 
 			// generate the CRC value of the session key
 			INIT_CRC32C(crcKs);
@@ -336,7 +385,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 
 			// save the original message length in the next 4 bytes
 			U32* p32 = (U32*)(p + 68);
-			*p32 = node->msgLen;
+			*p32 = task->msgLen;
 
 			// mask the 8 bytes to make it a little bit harder for the attacker :-)
 			U8* q = (U8*)&crcHash;
@@ -349,7 +398,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 				wt_FillRandomData(p + 72, length_raw - 72);
 
 			// save the original message
-			memcpy(p + 72 + idx, node->message, node->msgLen);
+			memcpy(p + 72 + idx, task->message, task->msgLen);
 
 			wt_chacha20_init(&cxt);
 			wt_chacha20_setkey(&cxt, Ks); // use the session key as the key for Chacha20 encryption algorithm.
@@ -361,7 +410,7 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 
 			// we complete the raw message, so conver the raw message to base64 encoding string, and with a zero at the end
 			length_b64 = wt_b64_enc_len(length_raw);
-			msssage_b64 = (U8*)wt_palloc(pool, 89 + length_b64 + 1); // zero terminated
+			msssage_b64 = (U8*)wt_palloc(pool, 89 + length_b64); 
 			if (msssage_b64)
 			{
 				int rc;
@@ -378,13 +427,11 @@ static int SendOutPushlishTask(struct mosquitto* mosq, MemoryPoolContext pool, P
 				if (rc == length_b64)
 				{
 					bool Successful = false;
-					msssage_b64[length_b64 + 89] = '\0'; // make the last byte to be zero
-					
 					// the receiver's public key is also the topic of MQTT 
 					wt_Raw2HexString(node->pubkey, 33, topic, nullptr); 
 
 					// send out the message by using MQTT protocol
-					if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 89 + 1, msssage_b64, 1, false, NULL))
+					if (MOSQ_ERR_SUCCESS == mosquitto_publish_v5(mosq, NULL, (const char*)topic, length_b64 + 89, msssage_b64, 1, false, NULL))
 					{
 						Successful = true;
 						InterlockedIncrement(&(node->state)); // we have processed this task
@@ -495,6 +542,8 @@ DWORD WINAPI MQTTPubThread(LPVOID lpData)
 		PostMessage(hWndUI, WM_MQTT_PUBMESSAGE, 1, 0);
 		goto QuitMQTTPubThread;
 	}
+
+	ng_seqnumber = wt_GenRandomU32(0x7FFFFFFF);
 
 	mosq = MQTT::MQTT_CreateInstance(mempool, hWndUI, (char*)g_MQTTPubClientId, MQTT_DEFAULT_HOST, MQTT_DEFAULT_PORT, &mqtt_callback, true);
 
@@ -686,10 +735,12 @@ extern "C"
 		if (memcmp(pkReceiver, g_PK, 33))
 			return;
 
-		GetKeyFromSecretKeyAndPlubicKey(g_SK, pkSender, Kp);
+		if (WT_OK != GetKeyFromSecretKeyAndPlubicKey(g_SK, pkSender, Kp))
+			return;
 
 		if (msssage_b64[88] == '|') // this is a common message packet
 		{
+#if 0
 			int rc;
 			U8* q;
 			U8* message_raw;
@@ -784,10 +835,12 @@ extern "C"
 			}
 			else
 				InsertIntoAbadonMsgTable(msssage_b64, length_b64);
+#endif
 		}
 
 		if (msssage_b64[88] == '#') // this is a common message packet
 		{
+#if 0
 			U8  Xor;
 			U32 crcKp;
 			AES256_ctx ctxAES = { 0 };
@@ -829,6 +882,7 @@ extern "C"
 					}
 				}
 			}
+#endif
 		}
 	}
 
@@ -1017,11 +1071,11 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 
 	bool hooked = false;
 
-	EnterCriticalSection(&g_csMQTTPub);
+	EnterCriticalSection(&g_csMQTTPubUI);
 	if (nullptr == g_PubData.task) // there is no task in the queue
 	{
 		g_PubData.task = mt;
-		LeaveCriticalSection(&g_csMQTTPub);
+		LeaveCriticalSection(&g_csMQTTPubUI);
 		SetEvent(g_MQTTPubEvent); // tell the Pub thread to work
 		return 0;
 	}
@@ -1059,7 +1113,7 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 		}
 		p = q;
 	}
-	LeaveCriticalSection(&g_csMQTTPub);
+	LeaveCriticalSection(&g_csMQTTPubUI);
 
 	if(mt)
 		SetEvent(g_MQTTPubEvent); // tell the Pub thread to work
@@ -1109,7 +1163,7 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 		sqlite3_finalize(stmt);
 
 		rc = sqlite3_prepare_v2(db,
-			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT,pt INTEGER NOT NULL,at INTEGER DEFAULT 1,dt INTEGER,sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm TEXT NOT NULL UNIQUE,b0 BLOB,b1 BLOB)",
+			(const char*)"CREATE TABLE k(id INTEGER PRIMARY KEY AUTOINCREMENT,pt INTEGER NOT NULL,at INTEGER DEFAULT 1,dt INTEGER,sk CHAR(64) NOT NULL UNIQUE,pk CHAR(66) NOT NULL UNIQUE,nm TEXT NOT NULL UNIQUE,bt INTEGER DEFAULT 0,sx INTEGER DEFAULT 9,mt TEXT,fm TEXT,b0 BLOB,b1 BLOB)",
 			-1, &stmt, NULL);
 		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
 		rc = sqlite3_step(stmt);

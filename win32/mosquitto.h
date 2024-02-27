@@ -9,9 +9,6 @@
 #include "wt/wt_mempool.h"
 #include "wt/wt_utils.h"
 
-#define MQTT_DEFAULT_HOST	("www.boobooke.com")
-#define MQTT_DEFAULT_PORT	1883
-
 #define CLIENT_PUB 1
 #define CLIENT_SUB 2
 #define CLIENT_RR 3

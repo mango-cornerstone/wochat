@@ -25,7 +25,6 @@ extern U8*               g_myImage128;
 extern U8*				 g_aiImage32;
 extern U8*				 g_aiImage128;
 
-extern U32	             g_messageSequence;
 extern HTAB*             g_messageHTAB;
 extern HTAB*             g_keyHTAB;
 extern MemoryPoolContext g_messageMemPool;
@@ -48,8 +47,9 @@ extern U8* g_MQTTSubClientId;
 
 extern HANDLE             g_MQTTPubEvent;
 
-extern CRITICAL_SECTION    g_csMQTTSub;
-extern CRITICAL_SECTION    g_csMQTTPub;
+extern CRITICAL_SECTION    g_csMQTTSubUI;
+extern CRITICAL_SECTION    g_csMQTTPubUI;
+extern CRITICAL_SECTION    g_csMQTTPubSub;
 
 extern ID2D1Factory* g_pD2DFactory;
 extern IDWriteFactory* g_pDWriteFactory;
@@ -99,7 +99,7 @@ typedef struct MessageTask
 	U8   pubkey[33];
 	U8   type;
 	U8   hash[32]; // the SHA256 hash value of this node
-	U8*  message;  // the first 4 bytes is a sequnce number to be sure that the same text has different SHA256 value
+	U8*  message;  
 	U32  msgLen;
 } MessageTask;
 

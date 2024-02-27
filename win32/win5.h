@@ -383,7 +383,7 @@ public:
 	int Do_DUI_KEYDOWN(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr) 
 	{ 
 		int ret = 0;
-#if 0
+
 		U32 keyCode = static_cast<U32>(wParam);
 		bool heldControl = (GetKeyState(VK_CONTROL) & 0x80) != 0;
 
@@ -395,25 +395,22 @@ public:
 			U32 len = eb->GetInputMessageLengthInBytes();
 			if (len > 0) // the user input some message that is ready to send
 			{
-				MessageTask* mt = (MessageTask*)wt_palloc0(g_messageMemPool, sizeof(MessageTask));
+				MessageTask* mt = (MessageTask*)wt_palloc0(m_pool , sizeof(MessageTask));
 				if (mt)
 				{
-					U8* msgInput = (U8*)wt_palloc(g_messageMemPool, len + 4);
+					U8* msgInput = (U8*)wt_palloc(m_pool, len);
 					if (msgInput)
 					{
-						if (eb->GetInputMessage(msgInput + 4, len))
+						if (eb->GetInputMessage(msgInput, len))
 						{
 							int r = GetReceiverPublicKey(lpData, mt->pubkey);
 							if (0 == r && (0x02 == mt->pubkey[0] || 0x03 == mt->pubkey[0])) // the first byte of public key is 02 or 03
 							{
-								U32* p = (U32*)msgInput;
-								*p = ++g_messageSequence; // record the sequence
-								mt->state = MESSAGE_TASK_STATE_NULL;
 								mt->next = nullptr;
-								mt->message = msgInput;
-								mt->msgLen = len + 4;
+								mt->state = MESSAGE_TASK_STATE_NULL;
 								mt->type = 'T'; // this is the text message
-								wt_sha256_hash((const unsigned char*)mt->message, mt->msgLen, mt->hash);
+								mt->message = msgInput;
+								mt->msgLen = len;
 								PushTaskIntoSendMessageQueue(mt); // send to the network
 								PostWindowMessage(WM_XWINDOWS04, WIN4_UPDATE_MESSAGE, (LPARAM)mt);
 								ret = 1;
@@ -424,15 +421,17 @@ public:
 								wt_pfree(mt);
 							}
 						}
+						else
+						{
+							wt_pfree(msgInput);
+							wt_pfree(mt);
+						}
 					}
 					else
-					{
 						wt_pfree(mt);
-					}
 				}
 			}
 		}
-#endif
 		return ret; 
 	}
 

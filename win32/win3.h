@@ -554,23 +554,27 @@ public:
 		m_maxCtl[mode] = id + 1;
 	}
 
-	U32 SetChatGroup(XChatGroup* cg)
+	U32 SetChatGroup(WTChatGroup* cg)
 	{
-#if 0
 		XLabel* lb;
-		wchar_t hexPK[67];
+		wchar_t hexPK[PUBLIC_KEY_SIZE + PUBLIC_KEY_SIZE + 1];
 
+		assert(WIN3_MODE_TALK == m_mode);
 		assert(cg);
 
-		lb = (XLabel*)m_controlArray[XWIN3_LABEL_NAME];
-		lb->setText(cg->name, cg->nameLen);
+		WTFriend* p = cg->people;
+		assert(p);
 
-		wt_Raw2HexStringW(cg->pubkey, 33, hexPK, nullptr);
-		lb = (XLabel*)m_controlArray[XWIN3_LABEL_PUBLICKEY];
-		lb->setText(hexPK, 66);
+		lb = (XLabel*)m_ctlArray[m_mode][XWIN3_TALK_LABEL_NAME];
+		lb->setText((wchar_t*)p->name, p->nameLen);
+
+		wt_Raw2HexStringW(p->pubkey, PUBLIC_KEY_SIZE, hexPK, nullptr);
+		lb = (XLabel*)m_ctlArray[m_mode][XWIN3_TALK_LABEL_PUBLICKEY];
+		lb->setText((wchar_t*)hexPK, PUBLIC_KEY_SIZE + PUBLIC_KEY_SIZE);
+
 		UpdateControlPosition();
 		InvalidateScreen();
-#endif
+		
 		return WT_OK;
 	}
 };

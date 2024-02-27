@@ -21,7 +21,7 @@ class XWindow4 : public XWindowT <XWindow4>
 		WIN4_GAP_MESSAGE = 34
 	};
 
-	XChatGroup* m_chatGroup = nullptr;
+	WTChatGroup* m_chatGroup = nullptr;
 
 	IDWriteTextLayout* m_cacheTL[1024];
 	FLOAT m_offsetX[1024];
@@ -52,8 +52,9 @@ public:
 		int r = 1;
 		if (m_chatGroup && pk)
 		{
-			for (int i = 0; i < 33; i++)
-				pk[i] = m_chatGroup->pubkey[i];
+			WTFriend* p = m_chatGroup->people;
+			assert(p);
+			for (int i = 0; i < PUBLIC_KEY_SIZE; i++) pk[i] = p->pubkey[i];
 			r = 0;
 		}
 		return r;
@@ -66,7 +67,7 @@ public:
 		if (width && m_chatGroup)
 		{
 			m_sizeAll.cy = 0;
-			XChatMessage* p = m_chatGroup->headMessage;
+			WTChatGroup* p = m_chatGroup->headMessage;
 			while (nullptr != p)
 			{
 				{  // determine the height of the text layout
@@ -101,25 +102,24 @@ public:
 		return r;
 	}
 
-	int SetChatGroup(XChatGroup* cg)
+	int SetChatGroup(WTChatGroup* cg)
 	{
 		int r = 0;
-#if 0
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
 		assert(nullptr != cg);
 
-		XChatGroup* prev = m_chatGroup;
+		WTChatGroup* prev = m_chatGroup;
 		m_chatGroup = cg;
 
-		if (0 == cg->width)
+		if (0 == m_chatGroup->width)
 		{
-			cg->width = w;
+			m_chatGroup->width = w;
 			ReLayoutText(w, h);
 		}
-		else if(cg->width != w)
+		else if(m_chatGroup->width != w)
 		{
-			cg->width = w;
+			m_chatGroup->width = w;
 			ReLayoutText(w, h);
 		}
 
@@ -129,7 +129,7 @@ public:
 			InvalidateDUIWindow();
 			r++;
 		}
-#endif 
+
 		return r;
 	}
 
@@ -153,7 +153,7 @@ public:
 		xm = (XMessage*)hash_search(g_messageHTAB, hash, HASH_FIND, NULL);
 		if (xm)
 		{
-			XChatMessage* p = xm->pointer;
+			WTChatGroup* p = xm->pointer;
 			if (p)
 			{
 				p->state |= XMESSAGE_CONFIRMATION;
@@ -220,8 +220,8 @@ public:
 		U32 i = 0;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
-		XChatMessage* p = nullptr;
-		XChatMessage* q = nullptr;
+		WTChatGroup* p = nullptr;
+		WTChatGroup* q = nullptr;
 
 		if (nullptr == m_chatGroup)
 			return 0;
@@ -237,7 +237,7 @@ public:
 		if ('T' == mt->type)
 		{
 			wchar_t* text;
-			p = (XChatMessage*)wt_palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
+			p = (WTChatGroup*)wt_palloc0(m_chatGroup->mempool, sizeof(WTChatGroup));
 			if (nullptr == p)
 				return 0;
 
@@ -332,30 +332,31 @@ public:
 
 	int UpdateMyMessage(MessageTask* mt)
 	{
-#if 0
 		int r;
 		int w = m_area.right - m_area.left;
 		int h = m_area.bottom - m_area.top;
-		XChatMessage* p = nullptr;
-		XChatMessage* q = nullptr;
+		WTChatGroup* p = nullptr;
+		WTChatGroup* q = nullptr;
+		WTFriend* people;
 
 		if (nullptr == m_chatGroup || nullptr == mt)
 			return 0;
 
-		for (r = 0; r < 33; r++) // check the public key is the same or not
-		{
-			if (m_chatGroup->pubkey[r] != mt->pubkey[r])
-				break;
-		}
-		if (r != 33) // if the public key is not the same, something is wrong
+		people = m_chatGroup->people;
+		assert(people);
+
+		if (memcmp(people->pubkey, mt->pubkey, PUBLIC_KEY_SIZE))
 			return 0;
 
+		InterlockedIncrement(&(mt->state)); // ok, we have successfully processed this message task
+		
 		r = 0;
 
+#if 0
 		if ('T' == mt->type)
 		{
 			wchar_t* text;
-			p = (XChatMessage*)wt_palloc0(m_chatGroup->mempool, sizeof(XChatMessage));
+			p = (WTChatGroup*)wt_palloc0(m_chatGroup->mempool, sizeof(WTChatGroup));
 			if (nullptr == p)
 				return 0;
 
@@ -440,10 +441,8 @@ public:
 
 			InvalidateScreen();
 		}
-
-		return r;
 #endif
-		return 0;
+		return r;
 	}
 
 	int Do_DUI_PAINT(U32 uMsg, U64 wParam, U64 lParam, void* lpData = nullptr)
@@ -458,7 +457,7 @@ public:
 		if (m_chatGroup)
 		{
 			int pos = XWIN4_OFFSET;
-			XChatMessage* p = m_chatGroup->headMessage;
+			WTChatGroup* p = m_chatGroup->headMessage;
 			while (nullptr != p)
 			{
 				H = p->height;
@@ -489,7 +488,7 @@ public:
 		U32 color;
 		bool isMe;
 		int x, y, dx, dy, W, H, pos;
-		XChatMessage* p;
+		WTChatGroup* p;
 		IDWriteTextFormat* pTextFormat = GetTextFormat(WT_TEXTFORMAT_MAINTEXT);
 		ID2D1HwndRenderTarget* pD2DRenderTarget = static_cast<ID2D1HwndRenderTarget*>(surface);
 		ID2D1SolidColorBrush* pTextBrush = static_cast<ID2D1SolidColorBrush*>(brushText);
