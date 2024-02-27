@@ -398,3 +398,32 @@ int main(int argc, char* argv[])
 	return 0;
 }
 ```
+## Linux下的编译手记
+```
+https://github.com/bitcoin/bitcoin.git
+$ pwd
+/mnt/c/temp/bitcoin/src/secp256k1
+$ vi CMakeLists.txt
+option(BUILD_SHARED_LIBS "Build shared libraries." OFF)
+
+$ cmake -S bitcoin/src/secp256k1 -B libsecp256k1
+
+$ pwd
+/mnt/c/temp/libsecp256k1
+$ make
+$ sudo make install
+$ ls -l /usr/local/include/
+total 88
+-rw-r--r-- 1 root root 42619 Feb 26 14:37 secp256k1.h
+-rw-r--r-- 1 root root  2562 Feb 26 14:37 secp256k1_ecdh.h
+-rw-r--r-- 1 root root  9125 Feb 26 14:37 secp256k1_ellswift.h
+-rw-r--r-- 1 root root 10873 Feb 26 14:37 secp256k1_extrakeys.h
+-rw-r--r-- 1 root root  5947 Feb 26 14:37 secp256k1_preallocated.h
+-rw-r--r-- 1 root root  8160 Feb 26 14:37 secp256k1_schnorrsig.h
+$ ls -l /usr/local/lib
+total 1872
+-rw-r--r-- 1 root root 1900842 Feb 26 14:40 libsecp256k1.a
+$ file /usr/local/lib/libsecp256k1.a
+/usr/local/lib/libsecp256k1.a: current ar archive
+
+```
