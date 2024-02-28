@@ -7,10 +7,12 @@
 
 在安装好VSTS 2022以后，在Windows主菜单上有"x64 Native Tools Command Promote for VSTS 2022"的选项，点击它就会打开一个黑乎乎的DOS窗口，只不过里面的Visual C++的各种环境变量都设置好了。你在这个窗口里面敲入cl，如果显示一大堆信息，说明编译器cl.exe是可以执行的。我们就具备了基本的编译条件。 假设你的WoChat源码目录在D:\mywork\wochat，你编译后的东西在c:\Build\wt下。
 
+go to the folder of "C:\build", then:
+
 请在上面DOS窗口中执行如下命令中的一个即可：
 ```
-C:\build>cmake -B wt -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=MinSizeRel d:\mywork\wochat
-C:\build>cmake -B wt -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug d:\mywork\wochat
+C:\build> cmake -B wt -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=MinSizeRel d:\mywork\wochat
+C:\build> cmake -B wt -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug d:\mywork\wochat
 ```
 参数CMAKE_BUILD_TYPE控制编译的版本，通常分为Release和Debug两个版本。但是MinSizeRel生成的exe文件的体积最小，所以我通常使用MinSizeRel和Debug两个参数。MinSizeRel用于最终发布的exe文件的生成。Debug用于调试使用。 执行完上述命令中的一个后，你会发现CMake帮你创建了一个目录c:\build\wt，切换到这个目录下，执行如下命令进行编译：
 ```
