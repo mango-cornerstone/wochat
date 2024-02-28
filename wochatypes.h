@@ -53,6 +53,19 @@ typedef size_t Size;
 //#define MQTT_DEFAULT_HOST	("broker.hivemq.com")
 #define MQTT_DEFAULT_PORT	1883
 
+typedef long LONG;
+// a message node in the message queue
+typedef struct MessageTask
+{
+	struct MessageTask* next;
+	LONG  state;
+	U8   pubkey[33];
+	U8   type;
+	U8   hash[32]; // the SHA256 hash value of this node
+	U8*  message;
+	U32  msgLen;
+} MessageTask;
+
 /* sha256 hash values always is 256-bit/32-byte long */
 #define SHA256_HASH_SIZE	32
 

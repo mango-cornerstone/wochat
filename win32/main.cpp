@@ -535,11 +535,13 @@ public:
 					{
 					case 'T':
 						rc = m_win4.UpdateReceivedMessage(p);
+#if 0
 						if (rc)
 							SendConfirmationMessage(p->pubkey, p->hash); // send the confirmation to the sender that we got this message
+#endif
 						break;
 					case 'C':
-						rc = m_win4.UpdateMessageConfirmation(p->pubkey, p->hash);
+						//rc = m_win4.UpdateMessageConfirmation(p->pubkey, p->hash);
 						break;
 					default:
 						break;
@@ -1548,11 +1550,11 @@ public:
 				ReleaseUnknown(m_pD2DRenderTarget);
 			}
 		}
-
+#if 0
 		swprintf((wchar_t*)xtitle, 256, L"WoChat - [%06d] thread: %d W0:%d - W1:%d - W2:%d - W3:%d - W4:%d - W5:%d -", ++track, (int)g_threadCount,
 			m0,m1,m2,m3,m4,m5);
 		::SetWindowTextW(m_hWnd, (LPCWSTR)xtitle);
-
+#endif
 		EndPaint(&ps);
 		return 0;
 	}

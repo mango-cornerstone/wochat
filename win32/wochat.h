@@ -91,17 +91,6 @@ extern IDWriteFactory* g_pDWriteFactory;
 #define MESSAGE_TASK_STATE_ONE		1
 #define MESSAGE_TASK_STATE_COMPLETE	2
 
-// a message node in the message queue
-typedef struct MessageTask
-{
-	MessageTask* next;
-	LONG state;
-	U8   pubkey[33];
-	U8   type;
-	U8   hash[32]; // the SHA256 hash value of this node
-	U8*  message;  
-	U32  msgLen;
-} MessageTask;
 
 typedef struct MQTTPubData
 {
@@ -205,6 +194,10 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx);
 U32 OpenAccount(U32 idx, U16* pwd, U32 len);
 
 int GetSecretKey(U8* sk, U8* pk);
+
+S64 GetCurrentUTCTime64();
+
+void GetU64TimeStringW(S64 tm, wchar_t* tmstr, U16 len);
 
 U32 GetSecretKeyNumber(U32* total);
 

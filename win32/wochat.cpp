@@ -12,6 +12,33 @@
 #define WT_NETWORK_IS_BAD		0
 #define WT_NETWORK_IS_GOOD		1
 
+S64 GetCurrentUTCTime64()
+{
+	S64 tm;
+	U16* p16;
+	U8* p;
+	SYSTEMTIME st;
+
+	GetSystemTime(&st);
+
+	p16 = (U16*)&tm; *p16 = st.wYear;
+	p = (U8*)&tm; p[2] = st.wMonth; p[3] = st.wDay; p[4] = st.wHour; p[5] = st.wMinute; p[6] = st.wSecond; p[7] = 0;
+
+	return tm;
+}
+
+void GetU64TimeStringW(S64 tm, wchar_t* tmstr, U16 len)
+{
+	if (tmstr)
+	{
+		U16* p16 = (U16*)&tm;
+		U8* p = (U8*)&tm;
+		U16 yy = *p16;
+		swprintf(tmstr, len, L"%04d/%02d/%02d %02d:%02d:%02d", yy, p[2], p[3], p[4], p[5], p[6]);
+	}
+}
+
+
 U32 ng_seqnumber = 0;
 
 typedef struct PublishTask
@@ -229,38 +256,40 @@ Exit_InsertIntoGoodMsgTable:
 	return ret;
 }
 
-static U32 InsertIntoAbadonMsgTable(U8* txt, U32 len)
+static U32 InsertIntoAbadonMsgTable(U8* text, U32 len)
 {
-#if 0
 	U32 ret = WT_FAIL;
 	int rc;
 	sqlite3* db;
 	sqlite3_stmt* stmt = NULL;
 
+	EnterCriticalSection(&g_csMQTTPubSub);
+
 	rc = sqlite3_open16(g_DBPath, &db);
-	if (SQLITE_OK != rc)
-	{
-		sqlite3_close(db);
-		return WT_SQLITE_OPEN_ERR;
-	}
-
-	rc = sqlite3_prepare_v2(db, (const char*)"INSERT INTO q(t) VALUES((?))", -1, &stmt, NULL);
-
 	if (SQLITE_OK == rc)
 	{
-		rc = sqlite3_bind_text(stmt, 1, (const char*)txt, (int)len, SQLITE_TRANSIENT);
+		S64 tm = GetCurrentUTCTime64();
+		rc = sqlite3_prepare_v2(db, (const char*)"INSERT INTO q(dt,tx) VALUES((?),(?))", -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
-			rc = sqlite3_step(stmt);
-			if (SQLITE_DONE == rc)
-				ret = WT_OK;
+			rc = sqlite3_bind_int64(stmt, 1, tm);
+			if (SQLITE_OK == rc)
+			{
+				rc = sqlite3_bind_text(stmt, 2, (const char*)text, (int)len, SQLITE_TRANSIENT);
+				if (SQLITE_OK == rc)
+				{
+					rc = sqlite3_step(stmt);
+					if (SQLITE_DONE == rc)
+						ret = WT_OK;
+				}
+			}
 		}
+		sqlite3_finalize(stmt);
 	}
-	sqlite3_finalize(stmt);
 	sqlite3_close(db);
+	LeaveCriticalSection(&g_csMQTTPubSub);
+
 	return ret;
-#endif 
-	return WT_OK;
 }
 
 static U32 InsertIntoSendMsgTable(U8* txt, U32 len, U8* hash, bool successful = true)
@@ -800,28 +829,31 @@ extern "C"
 				if (0 == memcmp(hash, hash_org, 32)) // check the hash value is the same
 				{
 					InsertIntoGoodMsgTable(msssage_b64, length_b64, hash);
-#if 0
 					MessageTask* task = (MessageTask*)wt_palloc0(pool, sizeof(MessageTask));
 					if (task)
 					{
+						U32 utf16len;
 						memcpy(task->pubkey, pkSender, 33);
 						memcpy(task->hash, hash, 32);
 						task->type = type;
-						task->msgLen = length;
-						task->message = (U8*)wt_palloc(pool, length);
-						if (task->message)
+						// convert UTF8 to UTF 16
+						if (wt_UTF8ToUTF16(q + 4, length - 4, nullptr, &utf16len) == WT_OK)
 						{
-							memcpy(task->message, q, length);
-							PushTaskIntoReceiveMessageQueue(task);
-							::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+							task->msgLen = utf16len * sizeof(wchar_t);
+							task->message = (U8*)wt_palloc(pool, task->msgLen);
+							if (task->message)
+							{
+								wt_UTF8ToUTF16(q + 4, length - 4, (U16*)task->message, nullptr);
+								PushTaskIntoReceiveMessageQueue(task);
+								::PostMessage(hWndUI, WM_MQTT_SUBMESSAGE, 0, 0); // tell the UI thread that a new message is received
+							}
+							else wt_pfree(task);
 						}
-						else
-							wt_pfree(task);
+						else wt_pfree(task);
 					}
-#endif
 				}
-				else
-					InsertIntoAbadonMsgTable(msssage_b64, length_b64);
+				else InsertIntoAbadonMsgTable(msssage_b64, length_b64);
+
 				wt_pfree(message_raw);
 			}
 			else InsertIntoAbadonMsgTable(msssage_b64, length_b64);
@@ -1110,10 +1142,10 @@ int PushTaskIntoSendMessageQueue(MessageTask* mt)
 	return 0;
 }
 
-static const U8 utf8Name[]   = { 0x41,0x49,0xE8,0x81,0x8A,0xE5,0xA4,0xA9,0xE6,0x9C,0xBA,0xE5,0x99,0xA8,0xE4,0xBA,0xBA,0 };
-static const U8 utf8Motto[]  = { 0xE4,0xB8,0x80,0xE5,0x88,0x87,0xE7,0x9A,0x86,0xE6,0x9C,0x89,0xE5,0x8F,0xAF,0xE8,0x83,0xBD,0 };
-static const U8 utf8Area[]   = { 0xE5,0xAE,0x87,0xE5,0xAE,0x99,0xE8,0xB5,0xB7,0xE7,0x82,0xB9,0 };
-static const U8 utf8Source[] = { 0xE7,0xB3,0xBB,0xE7,0xBB,0x9F,0xE8,0x87,0xAA,0xE5,0xB8,0xA6,0 };
+static const U8 txtUtf8Name[]   = { 0xE9,0xBB,0x84,0xE5,0xA4,0xA7,0xE4,0xBB,0x99,0 };
+static const U8 txtUf8Motto[]  = { 0xE4,0xB8,0x80,0xE5,0x88,0x87,0xE7,0x9A,0x86,0xE6,0x9C,0x89,0xE5,0x8F,0xAF,0xE8,0x83,0xBD,0 };
+static const U8 txtUtf8Area[]   = { 0xE5,0xAE,0x87,0xE5,0xAE,0x99,0xE8,0xB5,0xB7,0xE7,0x82,0xB9,0 };
+static const U8 txtUtf8Source[] = { 0xE7,0xB3,0xBB,0xE7,0xBB,0x9F,0xE8,0x87,0xAA,0xE5,0xB8,0xA6,0 };
 
 U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 {
@@ -1216,13 +1248,13 @@ U32 CheckWoChatDatabase(LPCWSTR lpszPath)
 			(const char*)"INSERT INTO p(pk,nm,mt,fm,sr,b0,b1) VALUES('03339A1C8FDB6AFF46845E49D110E0400021E16146341858585C2E25CA399C01CA',(?),(?),(?),(?),(?),(?))",
 			-1, &stmt, NULL);
 		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
-		rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, 17, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 1, (const char*)txtUtf8Name, 9, SQLITE_TRANSIENT);
 		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
-		rc = sqlite3_bind_text(stmt, 2, (const char*)utf8Motto, 18, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 2, (const char*)txtUf8Motto, 18, SQLITE_TRANSIENT);
 		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
-		rc = sqlite3_bind_text(stmt, 3, (const char*)utf8Area, 12, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 3, (const char*)txtUtf8Area, 12, SQLITE_TRANSIENT);
 		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
-		rc = sqlite3_bind_text(stmt, 4, (const char*)utf8Source, 12, SQLITE_TRANSIENT);
+		rc = sqlite3_bind_text(stmt, 4, (const char*)txtUtf8Source, 12, SQLITE_TRANSIENT);
 		if (SQLITE_OK != rc) goto Exit_CheckWoChatDatabase;
 		assert(g_aiImage32);
 		assert(g_aiImage128);
@@ -1423,37 +1455,42 @@ U32 CreateNewAccount(wchar_t* name, U8 nlen, wchar_t* pwd, U8 plen, U32* skIdx)
 			return WT_SQLITE_OPEN_ERR;
 		}
 
-		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(pt,sk,pk,nm,b0,b1) VALUES(0,'%s','%s',(?),(?),(?))", hexSK, hexPK);
+		sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "INSERT INTO k(pt,dt,sk,pk,nm,b0,b1) VALUES(0,(?),'%s','%s',(?),(?),(?))", hexSK, hexPK);
 		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
-			rc = sqlite3_bind_text(stmt, 1, (const char*)utf8Name, (int)len, SQLITE_TRANSIENT);
+			S64 tm = GetCurrentUTCTime64();
+			rc = sqlite3_bind_int64(stmt, 1, tm);
 			if (SQLITE_OK == rc)
 			{
-				rc = sqlite3_bind_blob(stmt, 2, g_myImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
+				rc = sqlite3_bind_text(stmt, 2, (const char*)utf8Name, (int)len, SQLITE_TRANSIENT);
 				if (SQLITE_OK == rc)
 				{
-					rc = sqlite3_bind_blob(stmt, 3, g_myImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
+					rc = sqlite3_bind_blob(stmt, 3, g_myImage32, (MY_ICON_SIZE32 * MY_ICON_SIZE32 * sizeof(U32)), SQLITE_TRANSIENT);
 					if (SQLITE_OK == rc)
 					{
-						rc = sqlite3_step(stmt);
-						if (SQLITE_DONE == rc)
+						rc = sqlite3_bind_blob(stmt, 4, g_myImage128, (MY_ICON_SIZE128 * MY_ICON_SIZE128 * sizeof(U32)), SQLITE_TRANSIENT);
+						if (SQLITE_OK == rc)
 						{
-							sqlite3_finalize(stmt);
-							sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT id FROM k WHERE sk='%s' AND pk='%s'", hexSK, hexPK);
-							rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
-							if (SQLITE_OK == rc)
+							rc = sqlite3_step(stmt);
+							if (SQLITE_DONE == rc)
 							{
-								rc = sqlite3_step(stmt);
-								if (SQLITE_ROW == rc)
+								sqlite3_finalize(stmt);
+								sprintf_s((char*)sql, SQL_STMT_MAX_LEN, "SELECT id FROM k WHERE sk='%s' AND pk='%s'", hexSK, hexPK);
+								rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
+								if (SQLITE_OK == rc)
 								{
-									U32 Idx = sqlite3_column_int(stmt, 0);
-									if (skIdx)
-										*skIdx = Idx;
-									ret = WT_OK;
-									sqlite3_finalize(stmt);
-									sqlite3_close(db);
-									goto Exit_NewAccount;
+									rc = sqlite3_step(stmt);
+									if (SQLITE_ROW == rc)
+									{
+										U32 Idx = sqlite3_column_int(stmt, 0);
+										if (skIdx)
+											*skIdx = Idx;
+										ret = WT_OK;
+										sqlite3_finalize(stmt);
+										sqlite3_close(db);
+										goto Exit_NewAccount;
+									}
 								}
 							}
 						}
@@ -1508,7 +1545,7 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 			sqlite3_close(db);
 			return WT_SQLITE_OPEN_ERR;
 		}
-		sprintf_s((char*)sql, 64, "SELECT sk,pk,nm,b0,b1 FROM k WHERE id=%d", idx);
+		sprintf_s((char*)sql, 64, "SELECT sk,pk,nm,b0,b1,dt FROM k WHERE id=%d", idx);
 		rc = sqlite3_prepare_v2(db, (const char*)sql, -1, &stmt, NULL);
 		if (SQLITE_OK == rc)
 		{
@@ -1522,7 +1559,14 @@ U32 OpenAccount(U32 idx, U16* pwd, U32 len)
 				int bytes32 = sqlite3_column_bytes(stmt, 3);
 				U8* img128 = (U8*)sqlite3_column_blob(stmt, 4);
 				int bytes128 = sqlite3_column_bytes(stmt, 4);
-
+				S64 tm = sqlite3_column_int64(stmt, 5);
+#if 0
+				{
+					wchar_t ts[32+1] = { 0 };
+					GetU64TimeStringW(tm, ts, 32);
+					tm++;
+				}
+#endif
 				size_t skLen = strlen((const char*)hexSK);
 				size_t pkLen = strlen((const char*)hexPK);
 				if (skLen == 64 && pkLen == 66)
